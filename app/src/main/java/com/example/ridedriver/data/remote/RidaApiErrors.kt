@@ -7,6 +7,7 @@ import java.io.IOException
 /** Turns known API validation failures into short messages safe to show in the app. */
 object RidaApiErrors {
     fun message(error: Throwable, fallback: String): String {
+        if (error is IllegalArgumentException) return error.message ?: fallback
         if (error is IOException) return "Can't reach Rida right now. Check your connection and try again."
 
         val httpError = error as? HttpException ?: return fallback
@@ -20,6 +21,7 @@ object RidaApiErrors {
         }.getOrDefault("")
         val text = detail.lowercase()
         return when {
+            "account_role_mismatch" in responseText.lowercase() || "account type" in text -> "Use your driver account to sign in. Passenger accounts use the passenger app."
             "email" in text && ("already" in text || "exists" in text || "taken" in text) ||
                 httpError.code() == 409 && "phone" !in text -> "An account already uses this email address. Sign in instead."
             "phone" in text && ("already" in text || httpError.code() == 409) -> "This phone number is already linked to another account."

@@ -69,9 +69,13 @@ fun SettingsScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var autoAccept by remember { mutableStateOf(false) }
-    var soundAlerts by remember { mutableStateOf(true) }
-    var useGoogleMaps by remember { mutableStateOf(true) }
+    val preferences = remember { context.getSharedPreferences("driver_preferences", android.content.Context.MODE_PRIVATE) }
+    var autoAccept by remember { mutableStateOf(preferences.getBoolean("auto_accept", false)) }
+    var soundAlerts by remember { mutableStateOf(preferences.getBoolean("sound_alerts", true)) }
+    var useGoogleMaps by remember { mutableStateOf(preferences.getBoolean("google_maps", true)) }
+    androidx.compose.runtime.LaunchedEffect(autoAccept, soundAlerts, useGoogleMaps) {
+        preferences.edit().putBoolean("auto_accept", autoAccept).putBoolean("sound_alerts", soundAlerts).putBoolean("google_maps", useGoogleMaps).apply()
+    }
 
     Column(
         modifier = Modifier
@@ -164,6 +168,7 @@ fun SettingsScreen(
                 .clickable {
                     scope.launch {
                         DriverRepositoryProvider.get().setOnline(false)
+                        try { com.example.ridedriver.data.remote.RidaApiClient.api.logout() } catch (_: Exception) { }
                         SessionManager.clear(context)
                         onLogout()
                     }
@@ -232,187 +237,5 @@ private fun SettingNavRow(
             Text(subtitle, fontSize = 12.sp, color = RidaSecondary)
         }
         RidaIcon(icon = RidaIcons.ChevronRight, contentDescription = null, tint = RidaSecondary, modifier = Modifier.size(18.dp))
-    }
-}
-
-@Composable
-fun SupportScreen(
-    onBack: () -> Unit
-) {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    var subject by remember { mutableStateOf("") }
-    var description by remember { mutableStateOf("") }
-    var isSending by remember { mutableStateOf(false) }
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color(0xFFF9FAFB))
-            .statusBarsPadding()
-            .imePadding()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp, vertical = 16.dp)
-    ) {
-        // Back Header
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable(onClick = onBack).padding(4.dp)
-        ) {
-            RidaIcon(icon = RidaIcons.Back, contentDescription = "Back", tint = RidaInk, modifier = Modifier.size(20.dp))
-            Spacer(Modifier.width(8.dp))
-            Text("Driver Support", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = RidaInk)
-        }
-
-        Spacer(Modifier.height(18.dp))
-
-        // Emergency Banner
-        Surface(
-            shape = RoundedCornerShape(16.dp),
-            color = Color(0xFFFEF2F2),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Row(
-                modifier = Modifier.padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(
-                    modifier = Modifier.size(42.dp).clip(CircleShape).background(Color(0xFFFEE2E2)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    RidaIcon(icon = RidaIcons.Warning, contentDescription = null, tint = RidaRed, modifier = Modifier.size(22.dp))
-                }
-                Spacer(Modifier.width(12.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("Emergency Police Hotline", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = RidaRed)
-                    Text("Tap 112 for urgent emergency assistance", fontSize = 12.sp, color = RidaInk)
-                }
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = RidaRed,
-                    modifier = Modifier.clickable {
-                        context.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:112")))
-                    }
-                ) {
-                    Text("Call 112", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp))
-                }
-            }
-        }
-
-        Spacer(Modifier.height(14.dp))
-
-        // Support Hotline Banner
-        Surface(
-            shape = RoundedCornerShape(16.dp),
-            color = Color.White,
-            shadowElevation = 1.dp,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Row(
-                modifier = Modifier.padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(
-                    modifier = Modifier.size(42.dp).clip(CircleShape).background(RidaPrimary.copy(alpha = 0.12f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    RidaIcon(icon = RidaIcons.Phone, contentDescription = null, tint = RidaActionEnd, modifier = Modifier.size(20.dp))
-                }
-                Spacer(Modifier.width(12.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("Rida Driver Support Desk", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = RidaInk)
-                    Text("+255 700 000 000 (Available 24/7)", fontSize = 12.sp, color = RidaSecondary)
-                }
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = RidaForest,
-                    modifier = Modifier.clickable {
-                        context.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:+255700000000")))
-                    }
-                ) {
-                    Text("Call", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp))
-                }
-            }
-        }
-
-        Spacer(Modifier.height(24.dp))
-
-        // Submit Ticket Form
-        Text("Submit a Support Request", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = RidaInk)
-        Spacer(Modifier.height(10.dp))
-
-        Surface(shape = RoundedCornerShape(18.dp), color = Color.White, shadowElevation = 1.dp) {
-            Column(modifier = Modifier.padding(18.dp)) {
-                Text("Subject", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = RidaInk)
-                Spacer(Modifier.height(6.dp))
-                OutlinedTextField(
-                    value = subject,
-                    onValueChange = { subject = it },
-                    placeholder = { Text("e.g. Fare payment discrepancy", color = RidaSecondary) },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    shape = RoundedCornerShape(12.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedContainerColor = RidaField, unfocusedContainerColor = RidaField,
-                        focusedBorderColor = RidaPrimary, unfocusedBorderColor = RidaFieldBorder
-                    )
-                )
-
-                Spacer(Modifier.height(14.dp))
-
-                Text("Description", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = RidaInk)
-                Spacer(Modifier.height(6.dp))
-                OutlinedTextField(
-                    value = description,
-                    onValueChange = { description = it },
-                    placeholder = { Text("Describe the issue in detail...", color = RidaSecondary) },
-                    modifier = Modifier.fillMaxWidth().height(110.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedContainerColor = RidaField, unfocusedContainerColor = RidaField,
-                        focusedBorderColor = RidaPrimary, unfocusedBorderColor = RidaFieldBorder
-                    )
-                )
-
-                Spacer(Modifier.height(18.dp))
-
-                Surface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .clickable(enabled = !isSending && subject.isNotBlank() && description.isNotBlank()) {
-                            scope.launch {
-                                isSending = true
-                                try {
-                                    RidaApiClient.api.createSupportTicket(
-                                        CreateTicketRequest(subject = subject.trim(), description = description.trim(), category = "driver")
-                                    )
-                                    Toast.makeText(context, "Ticket submitted. Support will reply shortly.", Toast.LENGTH_LONG).show()
-                                    subject = ""
-                                    description = ""
-                                } catch (_: Exception) {
-                                    Toast.makeText(context, "Ticket submitted to queue.", Toast.LENGTH_SHORT).show()
-                                    subject = ""
-                                    description = ""
-                                } finally {
-                                    isSending = false
-                                }
-                            }
-                        },
-                    color = if (subject.isNotBlank() && description.isNotBlank()) RidaForest else Color(0xFFD1D5DB)
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        if (isSending) {
-                            CircularProgressIndicator(modifier = Modifier.size(18.dp), color = Color.White, strokeWidth = 2.dp)
-                        } else {
-                            Text("Submit Ticket", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                        }
-                    }
-                }
-            }
-        }
-
-        Spacer(Modifier.height(28.dp))
     }
 }

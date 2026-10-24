@@ -49,8 +49,6 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.ridedriver.data.driver.DriverRepositoryProvider
-import com.example.ridedriver.data.driver.Vehicle
 import com.example.ridedriver.data.driver.VehicleType
 import com.example.ridedriver.data.local.AuthValidation
 import com.example.ridedriver.data.local.SessionManager
@@ -82,6 +80,7 @@ fun SignUpScreen(
     var pwError by remember { mutableStateOf<String?>(null) }
     var formError by remember { mutableStateOf<String?>(null) }
     var isLoading by remember { mutableStateOf(false) }
+    var accountCreated by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -98,7 +97,7 @@ fun SignUpScreen(
             phoneError = "Enter a valid Tanzania number (e.g. 0712345678)"
             return
         }
-        pwError = AuthValidation.passwordError(password)
+        pwError = com.example.ridedriver.data.remote.DriverAuthContract.registrationPasswordError(password)
 
         if (emailError != null || pwError != null) return
 
@@ -106,33 +105,16 @@ fun SignUpScreen(
             isLoading = true
             formError = null
             try {
-                // Register driver account with the backend
-                val regReq = RegisterRequest(
-                    email = email.trim(),
-                    password = password,
-                    role = "driver"
-                )
-                val sessionResp = RidaApiClient.api.register(regReq)
-                val user = sessionResp.user
-
-                SessionManager.save(
-                    context = context,
-                    name = fullName.trim(),
-                    handle = email.substringBefore("@").let { "@$it" },
-                    phone = normalizedPhone,
-                    email = email.trim(),
-                    profileCompleted = true,
-                    accessToken = sessionResp.getEffectiveAccessToken(),
-                    refreshToken = sessionResp.getEffectiveRefreshToken()
-                )
-
-                // Initialize driver profile & vehicle
-                val repo = DriverRepositoryProvider.get()
-                repo.updateProfile(fullName.trim(), normalizedPhone)
-                repo.updateVehicle(Vehicle(type = selectedVehicleType, make = "", model = "", color = "", plate = ""))
-
+                if (!accountCreated) {
+                    val response = RidaApiClient.api.register(RegisterRequest(email.trim(), password, "driver"))
+                    SessionManager.saveGoogleSession(context, response)
+                    accountCreated = true
+                }
+                UserRepository.updateProfileOnServer(context, fullName.trim(), normalizedPhone, selectedVehicleType.wire).getOrThrow()
                 UserRepository.refreshSessionFromApi(context)
                 onSignUpSuccess()
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
                 formError = RidaApiErrors.message(e, "Registration failed. Please check your details and try again.")
             } finally {
@@ -217,7 +199,7 @@ fun SignUpScreen(
             Spacer(Modifier.height(6.dp))
             OutlinedTextField(
                 value = email,
-                onValueChange = { email = it; emailError = null },
+                onValueChange = { if (!accountCreated) { email = it; emailError = null } },
                 modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
                 placeholder = { Text("juma@example.com", color = RidaHint, fontSize = 14.sp) },
                 leadingIcon = { RidaIcon(icon = RidaIcons.Mail, contentDescription = null, tint = RidaHint, modifier = Modifier.size(20.dp)) },
@@ -261,7 +243,7 @@ fun SignUpScreen(
             Spacer(Modifier.height(6.dp))
             OutlinedTextField(
                 value = password,
-                onValueChange = { password = it; pwError = null },
+                onValueChange = { if (!accountCreated) { password = it; pwError = null } },
                 modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
                 placeholder = { Text("At least 6 characters", color = RidaHint, fontSize = 14.sp) },
                 leadingIcon = { RidaIcon(icon = RidaIcons.Lock, contentDescription = null, tint = RidaHint, modifier = Modifier.size(20.dp)) },

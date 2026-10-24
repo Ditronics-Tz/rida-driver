@@ -27,6 +27,7 @@ object RidaApiClient {
     private var appContext: Context? = null
     private var deviceId: String = UUID.randomUUID().toString()
     private val refreshMutex = Mutex()
+    private data class SessionAccountTag(val userId: String)
 
     private val moshi: Moshi = Moshi.Builder()
         .add(KotlinJsonAdapterFactory())
@@ -52,13 +53,13 @@ object RidaApiClient {
 
         // Attach bearer token if available and request doesn't already have one
         if (origRequest.header("Authorization") == null) {
-            val token = appContext?.let { ctx ->
-                runBlocking {
-                    SessionManager.observe(ctx).firstOrNull()?.accessToken
-                }
+            val session = appContext?.let { ctx ->
+                runBlocking { SessionManager.observe(ctx).firstOrNull() }
             }
+            val token = session?.accessToken
             if (!token.isNullOrBlank()) {
                 builder.header("Authorization", "Bearer $token")
+                    .tag(SessionAccountTag::class.java, SessionAccountTag(session?.userId.orEmpty()))
             }
         }
 
@@ -68,7 +69,7 @@ object RidaApiClient {
     private val tokenAuthenticator = object : Authenticator {
         override fun authenticate(route: Route?, response: Response): Request? {
             // Prevent infinite retry loop if refresh itself returns 401
-            if (response.request.url.encodedPath.contains("auth/refresh")) {
+            if (response.request.url.encodedPath.substringAfter("/api/v1/") in setOf("auth/refresh", "auth/login", "auth/register", "auth/google", "auth/google/challenge") || response.priorResponse != null) {
                 return null
             }
 
@@ -77,14 +78,25 @@ object RidaApiClient {
             return runBlocking {
                 refreshMutex.withLock {
                     val currentSession = SessionManager.observe(ctx).firstOrNull()
+                    val requestAccount = response.request.tag(SessionAccountTag::class.java)
+                    if (requestAccount != null && requestAccount.userId != currentSession?.userId) return@withLock null
                     val refreshToken = currentSession?.refreshToken
+                    val currentAccess = currentSession?.accessToken
+                    if (!currentAccess.isNullOrBlank() && response.request.header("Authorization") != "Bearer $currentAccess") {
+                        return@withLock response.request.newBuilder().header("Authorization", "Bearer $currentAccess").build()
+                    }
 
                     if (refreshToken.isNullOrBlank()) {
                         return@withLock null
                     }
 
                     try {
-                        val unauthClient = OkHttpClient.Builder().build()
+                        val unauthClient = OkHttpClient.Builder()
+                            .connectTimeout(15, TimeUnit.SECONDS)
+                            .readTimeout(35, TimeUnit.SECONDS)
+                            .addInterceptor { chain -> chain.proceed(chain.request().newBuilder()
+                                .header("X-Device-ID", deviceId).header("X-Device-Platform", "android").build()) }
+                            .build()
                         val refreshRetrofit = Retrofit.Builder()
                             .baseUrl(BASE_URL)
                             .client(unauthClient)
@@ -96,7 +108,8 @@ object RidaApiClient {
                         val newAccess = refreshResponse.getEffectiveAccessToken()
                         val newRefresh = refreshResponse.getEffectiveRefreshToken()
 
-                        if (newAccess.isNotBlank()) {
+                        if (SessionManager.observe(ctx).firstOrNull()?.accessToken != currentAccess) return@withLock null
+                        if (newAccess.isNotBlank() && newRefresh.isNotBlank() && refreshResponse.user.role == "driver") {
                             SessionManager.updateTokens(ctx, newAccess, newRefresh)
                             return@withLock response.request.newBuilder()
                                 .header("Authorization", "Bearer $newAccess")
@@ -106,6 +119,8 @@ object RidaApiClient {
                             null
                         }
                     } catch (e: Exception) {
+                        if (e is retrofit2.HttpException && e.code() in setOf(401, 403) &&
+                            SessionManager.observe(ctx).firstOrNull()?.accessToken == currentAccess) SessionManager.clear(ctx)
                         null
                     }
                 }

@@ -95,6 +95,7 @@ fun DriverHomeScreen(
     val repo = remember { DriverRepositoryProvider.get() }
     val state by repo.state.collectAsState()
     val context = LocalContext.current
+    val session by com.example.ridedriver.data.local.SessionManager.observe(context).collectAsState(initial = com.example.ridedriver.data.local.SessionManager.Session())
     val scope = rememberCoroutineScope()
     val isPreview = LocalInspectionMode.current
 
@@ -177,7 +178,9 @@ fun DriverHomeScreen(
 
         // Top Status Header (Profile, Rating, Earnings pill)
         TopBarOverlay(
-            driverName = state.profile.name.ifBlank { "Driver" },
+            driverName = session.name.ifBlank { "Driver" },
+            photoUrl = session.profilePictureUrl,
+            photoVersion = session.profilePictureVersion,
             rating = state.profile.rating,
             tripsCount = state.history.size,
             todayGrossTzs = state.history.take(4).sumOf { it.netTzs },
@@ -352,6 +355,8 @@ fun DriverHomeScreen(
 @Composable
 private fun TopBarOverlay(
     driverName: String,
+    photoUrl: String?,
+    photoVersion: Long,
     rating: Double,
     tripsCount: Int,
     todayGrossTzs: Long,
@@ -378,7 +383,7 @@ private fun TopBarOverlay(
                     .clickable(onClick = onProfileClick)
                     .padding(4.dp)
             ) {
-                UserAvatar(name = driverName, photoUrl = null, modifier = Modifier.size(40.dp))
+                UserAvatar(name = driverName, photoUrl = photoUrl, photoVersion = photoVersion, modifier = Modifier.size(40.dp))
                 Spacer(Modifier.width(10.dp))
                 Column {
                     Text(text = driverName, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = RidaInk)

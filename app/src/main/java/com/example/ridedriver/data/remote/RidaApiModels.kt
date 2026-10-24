@@ -30,7 +30,8 @@ data class GoogleChallengeResponse(
 @JsonClass(generateAdapter = false)
 data class GoogleExchangeRequest(
     val idToken: String,
-    val challengeId: String
+    val challengeId: String,
+    val role: String = "driver"
 )
 
 @JsonClass(generateAdapter = false)
@@ -140,3 +141,6 @@ data class TicketListResponse(
     val limit: Int = 50,
     val offset: Int = 0
 )
+
+@JsonClass(generateAdapter = false)
+data class DriverPayoutRequest(val amount: Long, val method: String, val phone: String)

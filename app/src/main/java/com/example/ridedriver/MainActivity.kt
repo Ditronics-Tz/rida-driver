@@ -24,6 +24,7 @@ import com.example.ridedriver.ui.navigation.DriverRoutes
 import com.example.ridedriver.ui.screens.RidaSplashScreen
 import com.example.ridedriver.ui.theme.RidaDriverTheme
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -49,7 +50,12 @@ class MainActivity : ComponentActivity() {
                             if (loggedIn) {
                                 UserRepository.refreshSessionFromApi(this@MainActivity)
                             }
-                            if (loggedIn) DriverRoutes.HOME else DriverRoutes.SIGN_IN
+                            val session = SessionManager.observe(this@MainActivity).first()
+                            when {
+                                !session.loggedIn || session.accessToken.isNullOrBlank() -> DriverRoutes.SIGN_IN
+                                !session.isProfileComplete -> DriverRoutes.EDIT_PROFILE
+                                else -> DriverRoutes.HOME
+                            }
                         }
                     } catch (cancelled: CancellationException) {
                         throw cancelled

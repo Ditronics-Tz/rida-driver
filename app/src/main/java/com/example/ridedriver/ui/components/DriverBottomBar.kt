@@ -22,13 +22,13 @@ fun DriverBottomBar(
     onHome: () -> Unit,
     onEarnings: () -> Unit,
     onTrips: () -> Unit,
-    onProfile: () -> Unit,
+    onSupport: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val colors = NavigationBarItemDefaults.colors(
         selectedIconColor = BarGreen,
         selectedTextColor = BarGreen,
-        indicatorColor = BarGreen.copy(alpha = 0.12f),
+        indicatorColor = Color.Transparent,
         unselectedIconColor = BarInactive,
         unselectedTextColor = BarInactive
     )
@@ -41,7 +41,7 @@ fun DriverBottomBar(
             selected = selected == "Home",
             onClick = onHome,
             label = { Text("Home") },
-            icon = { RidaIcon(icon = RidaIcons.Home, contentDescription = "Home") },
+            icon = { RidaIcon(icon = RidaIcons.Vehicle, contentDescription = "Home") },
             colors = colors
         )
         NavigationBarItem(
@@ -52,17 +52,17 @@ fun DriverBottomBar(
             colors = colors
         )
         NavigationBarItem(
-            selected = selected == "Trips",
+            selected = selected == "Rides",
             onClick = onTrips,
-            label = { Text("Trips") },
-            icon = { RidaIcon(icon = RidaIcons.History, contentDescription = "Trips") },
+            label = { Text("Rides") },
+            icon = { RidaIcon(icon = RidaIcons.Calendar, contentDescription = "Rides") },
             colors = colors
         )
         NavigationBarItem(
-            selected = selected == "Profile",
-            onClick = onProfile,
-            label = { Text("Profile") },
-            icon = { RidaIcon(icon = RidaIcons.Account, contentDescription = "Profile") },
+            selected = selected == "Support",
+            onClick = onSupport,
+            label = { Text("Support") },
+            icon = { RidaIcon(icon = RidaIcons.Help, contentDescription = "Support") },
             colors = colors
         )
     }

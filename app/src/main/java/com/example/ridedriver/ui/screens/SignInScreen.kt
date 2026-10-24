@@ -107,19 +107,11 @@ fun SignInScreen(
             try {
                 val loginReq = LoginRequest(email = email.trim(), password = password)
                 val sessionResp = RidaApiClient.api.login(loginReq)
-                val user = sessionResp.user
-                SessionManager.save(
-                    context = context,
-                    name = user.displayName().ifBlank { "Driver" },
-                    handle = user.email?.substringBefore("@")?.let { "@$it" } ?: "",
-                    phone = user.displayPhone(),
-                    email = user.email ?: email.trim(),
-                    profileCompleted = sessionResp.isProfileComplete(),
-                    accessToken = sessionResp.getEffectiveAccessToken(),
-                    refreshToken = sessionResp.getEffectiveRefreshToken()
-                )
+                SessionManager.saveGoogleSession(context, sessionResp)
                 UserRepository.refreshSessionFromApi(context)
                 onSignInSuccess()
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
                 formError = RidaApiErrors.message(e, "Sign in failed. Check your email and password.")
             } finally {
@@ -351,7 +343,7 @@ fun SignInScreen(
                             } else {
                                 val err = result.exceptionOrNull()
                                 if (err !is GetCredentialCancellationException) {
-                                    Toast.makeText(context, "Google Sign-In unavailable. Try email login.", Toast.LENGTH_SHORT).show()
+                                    formError = err?.let { RidaApiErrors.message(it, "Google Sign-In unavailable. Try again.") }
                                 }
                             }
                         } finally {

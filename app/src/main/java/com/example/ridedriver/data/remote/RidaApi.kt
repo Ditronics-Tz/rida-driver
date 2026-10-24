@@ -1,5 +1,11 @@
 package com.example.ridedriver.data.remote
 
+import okhttp3.MultipartBody
+import retrofit2.http.Multipart
+import retrofit2.http.Part
+import retrofit2.http.PUT
+import retrofit2.http.Header
+import retrofit2.http.Path
 import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.GET
@@ -56,6 +62,34 @@ interface RidaApi {
     // ---------------------------------------------------------------------------
     // Support
     // ---------------------------------------------------------------------------
+
+    @GET("driver/profile/me")
+    suspend fun getProfile(): Map<String, Any?>
+
+    @PUT("driver/profile/me")
+    suspend fun updateProfile(@Body request: Map<String, String>): Map<String, Any?>
+
+    @Multipart
+    @POST("driver/profile/me/images")
+    suspend fun uploadProfileImage(@Part image: MultipartBody.Part): Map<String, Any?>
+
+    @GET("wallet")
+    suspend fun wallet(): Map<String, Any?>
+
+    @POST("driver/payouts")
+    suspend fun requestPayout(@Header("Idempotency-Key") key: String, @Body body: DriverPayoutRequest): Map<String, Any?>
+
+    @GET("support/tickets/{id}")
+    suspend fun supportCase(@Path("id") id: String): Map<String, Any?>
+
+    @POST("support/tickets/{id}/messages")
+    suspend fun replyToCase(@Path("id") id: String, @Header("Idempotency-Key") key: String, @Body body: Map<String, String>): Map<String, Any?>
+
+    @POST("account/export-request")
+    suspend fun requestDataExport(@Body body: Map<String, String> = emptyMap()): Map<String, Any?>
+
+    @POST("account/deletion-request")
+    suspend fun requestAccountDeletion(@Body body: Map<String, String> = emptyMap()): Map<String, Any?>
 
     @POST("support/tickets")
     suspend fun createSupportTicket(@Body request: CreateTicketRequest): TicketDto

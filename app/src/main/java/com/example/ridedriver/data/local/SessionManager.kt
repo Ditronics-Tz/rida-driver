@@ -21,6 +21,7 @@ object SessionManager {
 
     private val LOGGED_IN = booleanPreferencesKey("logged_in")
     private val PROFILE_COMPLETED = booleanPreferencesKey("profile_completed")
+    private val USER_ID = stringPreferencesKey("user_id")
     private val NAME = stringPreferencesKey("name")
     private val HANDLE = stringPreferencesKey("handle")
     private val PHONE = stringPreferencesKey("phone")
@@ -32,6 +33,7 @@ object SessionManager {
 
     data class Session(
         val loggedIn: Boolean = false,
+        val userId: String = "",
         val name: String = "",
         val handle: String = "",
         val phone: String = "",
@@ -50,6 +52,7 @@ object SessionManager {
         context.sessionStore.data.map { prefs ->
             Session(
                 loggedIn = prefs[LOGGED_IN] == true,
+                userId = prefs[USER_ID].orEmpty(),
                 name = prefs[NAME].orEmpty().takeUnless { it == "Rida Rider" }.orEmpty(),
                 handle = prefs[HANDLE] ?: "",
                 phone = prefs[PHONE] ?: "",
@@ -95,12 +98,14 @@ object SessionManager {
         context: Context,
         response: SessionResponse
     ) {
+        com.example.ridedriver.data.remote.DriverAuthContract.validateSession(response)
         val user = response.user
         val name = user.fullName?.takeIf { it.isNotBlank() } ?: user.name.orEmpty()
         val email = user.email.orEmpty()
         val phone = user.phoneNumber?.takeIf { it.isNotBlank() } ?: user.phone.orEmpty()
         context.sessionStore.edit { prefs ->
             prefs[LOGGED_IN] = true
+            prefs[USER_ID] = user.id
             if (name.isBlank()) prefs.remove(NAME) else prefs[NAME] = name.trim()
             if (email.isBlank()) {
                 prefs.remove(HANDLE)
@@ -116,8 +121,9 @@ object SessionManager {
             response.getEffectiveRefreshToken().takeIf { it.isNotBlank() }?.let {
                 prefs[REFRESH_TOKEN] = it
             } ?: prefs.remove(REFRESH_TOKEN)
-            // The Google credential's photo is not a saved Rida profile field.
+            // Load the account's server profile separately; never carry another account's photo.
             prefs.remove(PROFILE_PIC)
+            prefs.remove(PROFILE_PIC_VERSION)
         }
     }
 

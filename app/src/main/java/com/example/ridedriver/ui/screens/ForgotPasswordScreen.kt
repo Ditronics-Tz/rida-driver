@@ -147,7 +147,7 @@ fun ForgotPasswordScreen(
                             if (err != null) {
                                 error = err
                             } else {
-                                sent = true
+                                error = "Password reset is not available yet. Contact Rida Support for help with your account."
                             }
                         }
                     ),

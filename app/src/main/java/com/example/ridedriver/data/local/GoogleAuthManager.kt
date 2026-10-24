@@ -63,6 +63,7 @@ object GoogleAuthManager {
                 "Rida did not return an access token"
             }
 
+            require(session.user.role == "driver") { "Use a driver account to sign in to this app." }
             SessionManager.saveGoogleSession(context, session)
             Result.success(session)
         } catch (e: CancellationException) {
