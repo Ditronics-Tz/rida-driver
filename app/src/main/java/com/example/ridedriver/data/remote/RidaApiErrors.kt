@@ -1,6 +1,5 @@
 package com.example.ridedriver.data.remote
 
-import org.json.JSONObject
 import retrofit2.HttpException
 import java.io.IOException
 
@@ -11,13 +10,19 @@ object RidaApiErrors {
 
         val httpError = error as? HttpException ?: return fallback
         val responseText = runCatching { httpError.response()?.errorBody()?.string().orEmpty() }.getOrDefault("")
-        val detail = runCatching {
-            val json = JSONObject(responseText)
-            sequenceOf("detail", "message", "error", "errors")
-                .mapNotNull { key -> json.opt(key)?.toString()?.takeIf(String::isNotBlank) }
-                .firstOrNull()
-                .orEmpty()
-        }.getOrDefault("")
+        when (jsonString(responseText, "code")) {
+            "ACCOUNT_LINK_REQUIRED" ->
+                return "This email already has a password account. Sign in with email. Google cannot link it yet."
+            "GOOGLE_CHALLENGE_INVALID" ->
+                return "That Google sign-in expired. Try again."
+            "GOOGLE_TOKEN_INVALID" ->
+                return "Google could not verify this sign-in. Try again."
+            "GOOGLE_NOT_CONFIGURED" ->
+                return "Google sign-in is not available right now."
+        }
+        val detail = sequenceOf("detail", "message", "error", "errors")
+            .firstNotNullOfOrNull { key -> jsonString(responseText, key).takeIf(String::isNotBlank) }
+            .orEmpty()
         val text = detail.lowercase()
         return when {
             "email" in text && ("already" in text || "exists" in text || "taken" in text) ||
@@ -30,5 +35,10 @@ object RidaApiErrors {
             httpError.code() == 403 -> "Your account can't sign in right now. Contact Rida Support."
             else -> fallback
         }
+    }
+
+    private fun jsonString(body: String, key: String): String {
+        val match = Regex(""""$key"\s*:\s*"((?:\\.|[^"\\])*)"""").find(body) ?: return ""
+        return match.groupValues[1]
     }
 }

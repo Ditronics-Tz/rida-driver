@@ -14,6 +14,8 @@
 
     <!-- Lets the driver call / text the passenger from the trip panel. -->
     <queries>
+        <!-- Credential Manager talks to Play services. A queries list hides it unless named. -->
+        <package android:name="com.google.android.gms" />
         <intent>
             <action android:name="android.intent.action.DIAL" />
         </intent>

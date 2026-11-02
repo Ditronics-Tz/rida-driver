@@ -1,6 +1,5 @@
 package com.example.ridedriver.ui.screens
 
-import android.widget.Toast
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Image
@@ -343,6 +342,7 @@ fun SignInScreen(
                     if (isLoading) return@OutlinedButton
                     scope.launch {
                         isLoading = true
+                        formError = null
                         try {
                             val result = GoogleAuthManager.signIn(context)
                             if (result.isSuccess) {
@@ -351,7 +351,10 @@ fun SignInScreen(
                             } else {
                                 val err = result.exceptionOrNull()
                                 if (err !is GetCredentialCancellationException) {
-                                    Toast.makeText(context, "Google Sign-In unavailable. Try email login.", Toast.LENGTH_SHORT).show()
+                                    formError = RidaApiErrors.message(
+                                        err ?: IllegalStateException("Google Sign-In failed"),
+                                        err?.message ?: "Google Sign-In is unavailable right now. Try again or sign in with email."
+                                    )
                                 }
                             }
                         } finally {

@@ -1,6 +1,8 @@
 package com.example.ridedriver.data.local
 
+import android.app.Activity
 import android.content.Context
+import android.content.ContextWrapper
 import android.util.Log
 import androidx.credentials.CredentialManager
 import androidx.credentials.CustomCredential
@@ -34,9 +36,11 @@ object GoogleAuthManager {
             val request = GetCredentialRequest.Builder()
                 .addCredentialOption(googleOption)
                 .build()
-            val response = CredentialManager.create(context).getCredential(
+            val activity = context.findActivity()
+                ?: return Result.failure(IllegalStateException("Open the sign-in screen, then try Google again."))
+            val response = CredentialManager.create(activity).getCredential(
                 request = request,
-                context = context
+                context = activity
             )
 
             val credential = response.credential as? CustomCredential
@@ -59,8 +63,9 @@ object GoogleAuthManager {
                     challengeId = challenge.challengeId
                 )
             )
-            require(session.getEffectiveAccessToken().isNotBlank()) {
-                "Rida did not return an access token"
+            // POST /auth/google creates a passenger unless this Google subject is already a driver.
+            GoogleSignInPolicy.rejection(session.user.role, session.getEffectiveAccessToken())?.let { reason ->
+                return Result.failure(IllegalStateException(reason))
             }
 
             SessionManager.saveGoogleSession(context, session)
@@ -80,4 +85,19 @@ object GoogleAuthManager {
     }
 
     private const val TAG = "GoogleAuthManager"
+}
+
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
+}
+
+/** Matches POST /auth/google: a new Google account is a passenger, and only a driver session may enter this app. */
+object GoogleSignInPolicy {
+    fun rejection(role: String?, accessToken: String): String? {
+        if (accessToken.isBlank()) return "Rida did not return an access token"
+        if (role == "driver") return null
+        return "This Google account is a passenger account. Register as a driver with email, or sign in with your driver email and password."
+    }
 }
