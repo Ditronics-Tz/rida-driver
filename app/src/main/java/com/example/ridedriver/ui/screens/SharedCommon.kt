@@ -11,6 +11,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.repeatOnLifecycle
 import com.example.ridedriver.data.remote.*
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
@@ -167,4 +168,85 @@ internal fun UseLocation(onPoint: (SharedPoint) -> Unit) {
         Text("Use current location")
     }
     if (message.isNotEmpty()) Text(message)
+}
+
+@android.annotation.SuppressLint("MissingPermission")
+@Composable
+internal fun ShareDriverLocation(trip: String) {
+    val context = LocalContext.current
+    val owner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    var granted by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==
+                PackageManager.PERMISSION_GRANTED
+        )
+    }
+    var status by remember { mutableStateOf("Driver location unavailable") }
+    val request =
+        rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+            granted = it
+        }
+    if (!granted) {
+        TextButton(onClick = { request.launch(Manifest.permission.ACCESS_FINE_LOCATION) }) {
+            Text("Share live location on this trip")
+        }
+    } else {
+        Text(status)
+        LaunchedEffect(trip, owner) {
+            owner.lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) {
+                kotlinx.coroutines.coroutineScope {
+                    val scope = this
+                    val client = LocationServices.getFusedLocationProviderClient(context)
+                    val callback =
+                        object : com.google.android.gms.location.LocationCallback() {
+                            override fun onLocationResult(
+                                result: com.google.android.gms.location.LocationResult
+                            ) {
+                                val point = result.lastLocation ?: return
+                                val age =
+                                    android.os.SystemClock.elapsedRealtimeNanos() -
+                                        point.elapsedRealtimeNanos
+                                if (age !in 0..120_000_000_000L || point.accuracy > 100) {
+                                    status = "Waiting for a fresh GPS fix"
+                                    return
+                                }
+                                scope.launch {
+                                    try {
+                                        val sent =
+                                            RidaApiClient.driverApi.updateLocation(
+                                                DriverLocationRequest(
+                                                    point.latitude,
+                                                    point.longitude,
+                                                    accuracy = point.accuracy,
+                                                )
+                                            )
+                                        status =
+                                            if (sent.isSuccessful) "Sharing live trip location"
+                                            else "Could not share trip location"
+                                    } catch (e: Exception) {
+                                        status = transportError(e)
+                                    }
+                                }
+                            }
+                        }
+                    try {
+                        client
+                            .requestLocationUpdates(
+                                com.google.android.gms.location.LocationRequest.Builder(
+                                        Priority.PRIORITY_HIGH_ACCURACY,
+                                        10000,
+                                    )
+                                    .build(),
+                                callback,
+                                android.os.Looper.getMainLooper(),
+                            )
+                            .addOnFailureListener { status = "Driver location unavailable" }
+                        kotlinx.coroutines.awaitCancellation()
+                    } finally {
+                        client.removeLocationUpdates(callback)
+                    }
+                }
+            }
+        }
+    }
 }

@@ -110,7 +110,10 @@ fun SharedRideScreen(back: () -> Unit) {
         } else {
             val trip = active
             if (trip != null) {
-                item { TripSummary(trip) }
+                item {
+                    TripSummary(trip)
+                    ShareDriverLocation(trip.id)
+                }
 
                 item {
                     Text(
