@@ -11,16 +11,18 @@ import retrofit2.http.PUT
 import retrofit2.http.Path
 import retrofit2.http.Query
 
-/**
- * Driver routes under `/api/v1/driver/` (the router exists on the backend and is
- * protected by the same bearer token as the passenger routes).
- *
- * NOTE: the exact contract is not documented in this workspace. These paths/fields
- * follow the passenger API's conventions (snake_case, `*_tzs`, `limit/offset`,
- * `Idempotency-Key` on mutations). Adjust here once the backend spec is shared and
- * set `USE_MOCK_DRIVER_API=false` in app/build.gradle.kts.
- */
+/** Authenticated driver and ride endpoints under /api/v1. */
 interface DriverApi {
+    @GET("driver/verification/me") suspend fun verification(): Verification
+    @PUT("driver/profile/me") suspend fun identifiers(@Body input: VehicleIdentifiers): VehicleIdentifiers
+    @POST("driver/verification/me/submit") suspend fun submitDocuments(): Verification
+    @POST("driver/documents/presign") suspend fun presign(@Body input: DocumentUpload): UploadTicket
+    @POST("driver/documents/{id}/confirm") suspend fun confirm(@Path("id") id: String): DocumentDto
+    @retrofit2.http.Multipart @POST("driver/documents") suspend fun upload(
+        @retrofit2.http.Part file: okhttp3.MultipartBody.Part,
+        @retrofit2.http.Part("type") type: okhttp3.RequestBody,
+        @retrofit2.http.Part("expires_at") expiry: okhttp3.RequestBody
+    ): DocumentDto
 
     // Profile, vehicle & documents --------------------------------------------
 
@@ -36,63 +38,63 @@ interface DriverApi {
     @PUT("driver/vehicle")
     suspend fun updateVehicle(@Body vehicle: VehicleDto): VehicleDto
 
-    @GET("driver/documents")
+    @GET("driver/verification/me")
     suspend fun getDocuments(): DocumentListResponse
 
     // Availability & location ---------------------------------------------------
 
-    @POST("driver/status")
-    suspend fun setStatus(@Body request: DriverStatusRequest): DriverStatusDto
+    @PUT("driver/availability")
+    suspend fun setStatus(@Body request: DriverStatusRequest, @Header("Idempotency-Key") key: String = RidaApiClient.generateIdempotencyKey()): DriverStatusDto
 
     @POST("driver/location")
-    suspend fun updateLocation(@Body request: DriverLocationRequest): Response<Unit>
+    suspend fun updateLocation(@Body request: DriverLocationRequest, @Header("Idempotency-Key") key: String = RidaApiClient.generateIdempotencyKey()): Response<Unit>
 
     // Offers ----------------------------------------------------------------------
 
     @GET("driver/offers")
     suspend fun getOffers(): OfferListResponse
 
-    @POST("driver/offers/{offerId}/accept")
+    @POST("rides/{offerId}/accept")
     suspend fun acceptOffer(
         @Path("offerId") offerId: String,
         @Header("Idempotency-Key") idempotencyKey: String
     ): DriverRideDto
 
-    @POST("driver/offers/{offerId}/decline")
-    suspend fun declineOffer(@Path("offerId") offerId: String): Response<Unit>
+    @POST("rides/{offerId}/decline")
+    suspend fun declineOffer(@Path("offerId") offerId: String, @Header("Idempotency-Key") key: String = RidaApiClient.generateIdempotencyKey()): Response<Unit>
 
     // Active ride -----------------------------------------------------------------
 
     @GET("driver/rides/current")
     suspend fun getCurrentRide(): Response<DriverRideDto>
 
-    @POST("driver/rides/{rideId}/arrived")
+    @POST("rides/{rideId}/arrived")
     suspend fun markArrived(
         @Path("rideId") rideId: String,
         @Header("Idempotency-Key") idempotencyKey: String
     ): DriverRideDto
 
-    @POST("driver/rides/{rideId}/start")
+    @POST("rides/{rideId}/start")
     suspend fun startRide(
         @Path("rideId") rideId: String,
         @Header("Idempotency-Key") idempotencyKey: String
     ): DriverRideDto
 
-    @POST("driver/rides/{rideId}/complete")
+    @POST("rides/{rideId}/complete")
     suspend fun completeRide(
         @Path("rideId") rideId: String,
         @Header("Idempotency-Key") idempotencyKey: String,
         @Body request: CompleteRideRequest
     ): DriverRideDto
 
-    @POST("driver/rides/{rideId}/cancel")
+    @POST("rides/{rideId}/cancel")
     suspend fun cancelRide(
         @Path("rideId") rideId: String,
         @Header("Idempotency-Key") idempotencyKey: String,
         @Body request: DriverCancelRequest
     ): DriverRideDto
 
-    @POST("driver/rides/{rideId}/rating")
+    @POST("rides/{rideId}/rating")
     suspend fun ratePassenger(
         @Path("rideId") rideId: String,
         @Body request: RatePassengerRequest
@@ -100,7 +102,7 @@ interface DriverApi {
 
     // History & earnings ------------------------------------------------------------
 
-    @GET("driver/rides")
+    @GET("rides")
     suspend fun getRides(
         @Query("limit") limit: Int = 50,
         @Query("offset") offset: Int = 0,
@@ -124,6 +126,8 @@ data class DriverPointDto(
 
 @JsonClass(generateAdapter = false)
 data class DriverProfileDto(
+    @param:Json(name = "vehicle_type") val vehicleType: String? = null,
+    @param:Json(name = "plate_number") val plateNumber: String? = null,
     val id: String? = null,
     @param:Json(name = "full_name") val fullName: String? = null,
     val name: String? = null,
@@ -158,7 +162,7 @@ data class VehicleDto(
 @JsonClass(generateAdapter = false)
 data class DocumentDto(
     val id: String,
-    val kind: String? = null,
+    @param:Json(name = "type") val kind: String? = null,
     val title: String? = null,
     val status: String? = null,
     @param:Json(name = "expires_at") val expiresAt: String? = null,
@@ -283,3 +287,10 @@ data class EarningsDto(
     @param:Json(name = "distance_meters") val distanceMeters: Long = 0,
     @param:Json(name = "online_minutes") val onlineMinutes: Long = 0
 )
+
+data class VehicleIdentifiers(val licence_number: String = "", val vehicle_card_number: String = "",
+    val plate_number: String = "", val vehicle_type: String = "", val passenger_seats: Int = 0)
+data class Verification(val profile: VehicleIdentifiers, val documents: List<DocumentDto>, val required_types: List<String>)
+data class DocumentUpload(val type: String, val content_type: String, val size: Long, val expires_at: String)
+data class UploadTicket(val document: DocumentDto, val upload: UploadTarget)
+data class UploadTarget(val url: String, val headers: Map<String,String> = emptyMap())

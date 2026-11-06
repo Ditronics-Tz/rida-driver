@@ -58,8 +58,14 @@ fun EarningsScreen(
     var selectedPeriod by remember { mutableStateOf(EarningsPeriod.TODAY) }
     var summary by remember { mutableStateOf<EarningsSummary?>(null) }
 
+    var error by remember { mutableStateOf("") }
     LaunchedEffect(selectedPeriod) {
-        summary = repo.getEarnings(selectedPeriod)
+        error = ""
+        summary = null
+        try {
+            repo.refreshHistory()
+            summary = repo.getEarnings(selectedPeriod)
+        } catch (e: Exception) { error = transportError(e) }
     }
 
     Column(
@@ -78,7 +84,7 @@ fun EarningsScreen(
             color = RidaInk
         )
         Text(
-            text = "Track your net income, tips and 15% platform fee",
+            text = "Track your net income and trip fees",
             fontSize = 13.sp,
             color = RidaSecondary
         )
@@ -117,6 +123,10 @@ fun EarningsScreen(
         Spacer(Modifier.height(20.dp))
 
         // Main Net Earnings Card
+        if (summary == null) {
+            Text(if (error.isEmpty()) "Loading earnings…" else error)
+            return@Column
+        }
         val curSummary = summary
         val net = curSummary?.netTzs ?: 0L
         val gross = curSummary?.grossTzs ?: 0L
@@ -158,7 +168,7 @@ fun EarningsScreen(
                         Text(TzMoney.format(gross.toInt()), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = RidaInk)
                     }
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("Rida Fee (15%)", fontSize = 12.sp, color = RidaSecondary)
+                        Text("Rida trip fees", fontSize = 12.sp, color = RidaSecondary)
                         Text("- ${TzMoney.format(commission.toInt())}", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFFD92D20))
                     }
                     Column(horizontalAlignment = Alignment.End) {

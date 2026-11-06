@@ -22,7 +22,7 @@ import java.util.concurrent.TimeUnit
 
 object RidaApiClient {
 
-    const val BASE_URL = "https://rida-backend.ditronics.co.tz/api/v1/"
+    val BASE_URL = com.example.ridedriver.BuildConfig.API_BASE_URL
 
     private var appContext: Context? = null
     private var deviceId: String = UUID.randomUUID().toString()
@@ -72,11 +72,16 @@ object RidaApiClient {
                 return null
             }
 
+            if (response.priorResponse?.code == 401) return null
             val ctx = appContext ?: return null
 
             return runBlocking {
                 refreshMutex.withLock {
                     val currentSession = SessionManager.observe(ctx).firstOrNull()
+                    val latest = currentSession?.accessToken
+                    if (!latest.isNullOrBlank() && response.request.header("Authorization") != "Bearer $latest") {
+                        return@withLock response.request.newBuilder().header("Authorization", "Bearer $latest").build()
+                    }
                     val refreshToken = currentSession?.refreshToken
 
                     if (refreshToken.isNullOrBlank()) {
@@ -105,6 +110,11 @@ object RidaApiClient {
                             SessionManager.clear(ctx)
                             null
                         }
+                    } catch (e: retrofit2.HttpException) {
+                        if (e.code() == 401 && SessionManager.observe(ctx).firstOrNull()?.refreshToken == refreshToken) {
+                            SessionManager.clear(ctx)
+                        }
+                        null
                     } catch (e: Exception) {
                         null
                     }
@@ -135,6 +145,8 @@ object RidaApiClient {
             .addConverterFactory(MoshiConverterFactory.create(moshi))
             .build()
     }
+
+    val transport: TransportApi by lazy { retrofit.create(TransportApi::class.java) }
 
     val api: RidaApi by lazy { retrofit.create(RidaApi::class.java) }
 

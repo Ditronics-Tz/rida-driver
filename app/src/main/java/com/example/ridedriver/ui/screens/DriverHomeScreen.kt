@@ -1,6 +1,9 @@
 package com.example.ridedriver.ui.screens
 
 import android.Manifest
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
@@ -128,6 +131,21 @@ fun DriverHomeScreen(
             }
     }
 
+    val owner = LocalLifecycleOwner.current
+    LaunchedEffect(owner, isPermissionGranted, state.online, state.trip?.id) {
+        if (!isPreview) owner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            repo.refreshProfile()
+            var cycles = 0
+            while (true) {
+                try {
+                    repo.syncRides()
+                    if (cycles++ % 4 == 0 && (state.online || state.trip != null)) fetchLocation()
+                } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+                  catch (_: Exception) { /* Recover active rides and offers on the next poll. */ }
+                kotlinx.coroutines.delay(2500)
+            }
+        }
+    }
     LaunchedEffect(Unit) {
         if (!isPermissionGranted && !isPreview) {
             permissionState?.launchPermissionRequest()
@@ -229,7 +247,7 @@ fun DriverHomeScreen(
                     goingOnline = state.goingOnline,
                     onToggle = {
                         scope.launch {
-                            repo.setOnline(!state.online)
+                            repo.setOnline(!state.online).onFailure { Toast.makeText(context, it.message ?: "Availability could not be changed", Toast.LENGTH_LONG).show() }
                         }
                     }
                 )

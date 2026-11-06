@@ -9,7 +9,6 @@ import com.example.ridedriver.data.remote.DriverRideDto
 import com.example.ridedriver.data.remote.DriverStatusRequest
 import com.example.ridedriver.data.remote.RatePassengerRequest
 import com.example.ridedriver.data.remote.RidaApiClient
-import com.example.ridedriver.data.remote.RideOfferDto
 import com.example.ridedriver.data.remote.UpdateDriverProfileRequest
 import com.example.ridedriver.data.remote.VehicleDto
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -17,91 +16,144 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 
-/**
- * Live REST implementation of [DriverRepository] that calls [DriverApi].
- */
-class RemoteDriverRepository(
-    private val api: DriverApi = RidaApiClient.driverApi
-) : DriverRepository {
+/** Live REST implementation of [DriverRepository] that calls [DriverApi]. */
+class RemoteDriverRepository(private val api: DriverApi = RidaApiClient.driverApi) :
+    DriverRepository {
 
     private val _state = MutableStateFlow(DriverState())
     override val state: StateFlow<DriverState> = _state.asStateFlow()
 
+    override suspend fun syncRides() {
+        val active = api.getCurrentRide()
+        if (!active.isSuccessful) throw retrofit2.HttpException(active)
+        val trip = active.body()?.let(::mapRideDtoToActiveTrip)
+        val offer = if (trip == null) api.getOffers().offers.firstOrNull() else null
+        _state.update { state ->
+            state.copy(
+                trip = trip,
+                offer =
+                    offer?.let { dto ->
+                        if (state.offer?.id == dto.id) state.offer
+                        else
+                            RideOffer(
+                                id = dto.id,
+                                passengerName = dto.passenger?.name ?: "Passenger",
+                                passengerRating = dto.passenger?.rating ?: 0.0,
+                                passengerPhone = null,
+                                pickup = mapPoint(dto.pickup),
+                                dropoff = mapPoint(dto.dropoff),
+                                fareTzs = dto.estimatedFare ?: 0,
+                                distanceToPickupMeters = dto.pickupDistanceMeters ?: 0,
+                                tripDistanceMeters = dto.estimatedDistanceMeters ?: 0,
+                                tripDurationSeconds = dto.estimatedDurationSeconds ?: 0,
+                                vehicleType = VehicleType.fromWire(dto.vehicleType),
+                                expiresInSeconds = dto.expiresIn ?: RideOffer.OFFER_TIMEOUT_SECONDS,
+                            )
+                    },
+            )
+        }
+    }
+
     override suspend fun refreshProfile(): Result<DriverProfile> = runCatching {
         val dto = api.getProfile()
-        val profile = DriverProfile(
-            id = dto.id.orEmpty(),
-            name = dto.fullName?.takeIf { it.isNotBlank() } ?: dto.name.orEmpty(),
-            phone = dto.phone.orEmpty(),
-            email = dto.email.orEmpty(),
-            photoUrl = dto.profilePictureUrl,
-            rating = dto.rating ?: 5.0,
-            totalTrips = dto.totalTrips ?: 0,
-            acceptanceRate = dto.acceptanceRate?.toInt() ?: 100,
-            cancellationRate = dto.cancellationRate?.toInt() ?: 0,
-            verification = when (dto.verificationStatus?.lowercase()) {
-                "approved" -> VerificationStatus.APPROVED
-                "rejected" -> VerificationStatus.REJECTED
-                else -> VerificationStatus.PENDING
-            }
-        )
-        _state.update { it.copy(profile = profile, online = dto.isOnline ?: it.online) }
+        val me = RidaApiClient.api.me().user
+        val profile =
+            DriverProfile(
+                id = me.id,
+                name = me.fullName ?: me.name.orEmpty(),
+                phone = me.phoneNumber ?: me.phone.orEmpty(),
+                email = me.email.orEmpty(),
+                photoUrl = dto.profilePictureUrl,
+                rating = dto.rating ?: 5.0,
+                totalTrips = dto.totalTrips ?: 0,
+                acceptanceRate = dto.acceptanceRate?.toInt() ?: 100,
+                cancellationRate = dto.cancellationRate?.toInt() ?: 0,
+                verification =
+                    when (dto.verificationStatus?.lowercase()) {
+                        "approved" -> VerificationStatus.APPROVED
+                        "rejected" -> VerificationStatus.REJECTED
+                        else -> VerificationStatus.PENDING
+                    },
+            )
+        _state.update {
+            it.copy(
+                profile = profile,
+                vehicle =
+                    Vehicle(
+                        type = VehicleType.fromWire(dto.vehicleType),
+                        plate = dto.plateNumber.orEmpty(),
+                    ),
+                online = dto.isOnline ?: it.online,
+            )
+        }
         profile
     }
 
-    override suspend fun updateProfile(fullName: String, phone: String?): Result<DriverProfile> = runCatching {
-        val dto = api.updateProfile(UpdateDriverProfileRequest(fullName = fullName, phone = phone))
-        val profile = _state.value.profile.copy(
-            name = dto.fullName ?: fullName,
-            phone = dto.phone ?: phone ?: _state.value.profile.phone
-        )
-        _state.update { it.copy(profile = profile) }
-        profile
-    }
+    override suspend fun updateProfile(fullName: String, phone: String?): Result<DriverProfile> =
+        runCatching {
+            val dto =
+                api.updateProfile(UpdateDriverProfileRequest(fullName = fullName, phone = phone))
+            val profile =
+                _state.value.profile.copy(
+                    name = dto.fullName ?: fullName,
+                    phone = dto.phone ?: phone ?: _state.value.profile.phone,
+                )
+            _state.update { it.copy(profile = profile) }
+            profile
+        }
 
     override suspend fun updateVehicle(vehicle: Vehicle): Result<Vehicle> = runCatching {
-        val dto = api.updateVehicle(
-            VehicleDto(
-                vehicleType = vehicle.type.wire,
-                make = vehicle.make,
-                model = vehicle.model,
-                color = vehicle.color,
-                plateNumber = vehicle.plate,
-                year = vehicle.year
+        val dto =
+            api.updateVehicle(
+                VehicleDto(
+                    vehicleType = vehicle.type.wire,
+                    make = vehicle.make,
+                    model = vehicle.model,
+                    color = vehicle.color,
+                    plateNumber = vehicle.plate,
+                    year = vehicle.year,
+                )
             )
-        )
-        val updated = vehicle.copy(
-            type = VehicleType.fromWire(dto.vehicleType),
-            make = dto.make.orEmpty(),
-            model = dto.model.orEmpty(),
-            color = dto.color.orEmpty(),
-            plate = dto.plateNumber.orEmpty(),
-            year = dto.year
-        )
+        val updated =
+            vehicle.copy(
+                type = VehicleType.fromWire(dto.vehicleType),
+                make = dto.make.orEmpty(),
+                model = dto.model.orEmpty(),
+                color = dto.color.orEmpty(),
+                plate = dto.plateNumber.orEmpty(),
+                year = dto.year,
+            )
         _state.update { it.copy(vehicle = updated) }
         updated
     }
 
     override suspend fun refreshDocuments(): Result<List<DriverDocument>> = runCatching {
         val resp = api.getDocuments()
-        val docs = resp.documents.map { dto ->
-            DriverDocument(
-                id = dto.id,
-                title = dto.title ?: dto.kind ?: "Document",
-                description = dto.kind ?: "",
-                status = DocumentStatus.fromWire(dto.status),
-                expiresAt = dto.expiresAt,
-                note = dto.note
-            )
-        }
+        val docs =
+            resp.documents.map { dto ->
+                DriverDocument(
+                    id = dto.id,
+                    title = dto.title ?: dto.kind ?: "Document",
+                    description = dto.kind ?: "",
+                    status = DocumentStatus.fromWire(dto.status),
+                    expiresAt = dto.expiresAt,
+                    note = dto.note,
+                )
+            }
         _state.update { it.copy(documents = docs) }
         docs
     }
 
-    override suspend fun uploadDocument(docId: String, title: String): Result<DriverDocument> = runCatching {
-        // Document upload endpoint or multipart
-        DriverDocument(id = docId, title = title, description = "", status = DocumentStatus.PENDING)
-    }
+    override suspend fun uploadDocument(docId: String, title: String): Result<DriverDocument> =
+        runCatching {
+            // Document upload endpoint or multipart
+            DriverDocument(
+                id = docId,
+                title = title,
+                description = "",
+                status = DocumentStatus.PENDING,
+            )
+        }
 
     override suspend fun setOnline(online: Boolean): Result<Unit> = runCatching {
         _state.update { it.copy(goingOnline = true) }
@@ -112,7 +164,7 @@ class RemoteDriverRepository(
                 it.copy(
                     online = online,
                     goingOnline = false,
-                    onlineSinceMillis = if (online) System.currentTimeMillis() else null
+                    onlineSinceMillis = if (online) System.currentTimeMillis() else null,
                 )
             }
         } catch (e: Exception) {
@@ -121,7 +173,12 @@ class RemoteDriverRepository(
         }
     }
 
-    override suspend fun updateLocation(lat: Double, lng: Double, bearing: Float?, address: String?) {
+    override suspend fun updateLocation(
+        lat: Double,
+        lng: Double,
+        bearing: Float?,
+        address: String?,
+    ) {
         _state.update { current ->
             current.copy(location = Place(lat, lng, address ?: current.location?.address ?: ""))
         }
@@ -139,7 +196,8 @@ class RemoteDriverRepository(
     }
 
     override suspend fun declineOffer(offerId: String): Result<Unit> = runCatching {
-        api.declineOffer(offerId)
+        val response = api.declineOffer(offerId)
+        if (!response.isSuccessful) throw retrofit2.HttpException(response)
         _state.update { if (it.offer?.id == offerId) it.copy(offer = null) else it }
     }
 
@@ -151,21 +209,34 @@ class RemoteDriverRepository(
         when (next) {
             TripPhase.ARRIVED -> {
                 api.markArrived(currentTrip.id, idempotency)
-                val updated = currentTrip.copy(phase = next, arrivedAtMillis = System.currentTimeMillis())
+                val updated =
+                    currentTrip.copy(phase = next, arrivedAtMillis = System.currentTimeMillis())
                 _state.update { it.copy(trip = updated) }
                 next
             }
             TripPhase.IN_TRIP -> {
                 api.startRide(currentTrip.id, idempotency)
-                val updated = currentTrip.copy(phase = next, startedAtMillis = System.currentTimeMillis())
+                val updated =
+                    currentTrip.copy(phase = next, startedAtMillis = System.currentTimeMillis())
                 _state.update { it.copy(trip = updated) }
                 next
             }
             TripPhase.COMPLETED -> {
                 val loc = _state.value.location
-                val done = api.completeRide(currentTrip.id, idempotency, CompleteRideRequest(lat = loc?.lat, lng = loc?.lng))
+                val done =
+                    api.completeRide(
+                        currentTrip.id,
+                        idempotency,
+                        CompleteRideRequest(lat = loc?.lat, lng = loc?.lng),
+                    )
                 val record = mapRideDtoToTripRecord(done)
-                _state.update { it.copy(trip = null, lastCompleted = record, history = listOf(record) + it.history) }
+                _state.update {
+                    it.copy(
+                        trip = null,
+                        lastCompleted = record,
+                        history = listOf(record) + it.history,
+                    )
+                }
                 next
             }
             else -> next
@@ -183,8 +254,12 @@ class RemoteDriverRepository(
     override suspend fun ratePassenger(tripId: String, score: Int): Result<Unit> = runCatching {
         api.ratePassenger(tripId, RatePassengerRequest(score = score))
         _state.update { current ->
-            val updated = current.history.map { if (it.id == tripId) it.copy(ratingGiven = score) else it }
-            val last = if (current.lastCompleted?.id == tripId) current.lastCompleted.copy(ratingGiven = score) else current.lastCompleted
+            val updated =
+                current.history.map { if (it.id == tripId) it.copy(ratingGiven = score) else it }
+            val last =
+                if (current.lastCompleted?.id == tripId)
+                    current.lastCompleted.copy(ratingGiven = score)
+                else current.lastCompleted
             current.copy(history = updated, lastCompleted = last)
         }
     }
@@ -194,28 +269,30 @@ class RemoteDriverRepository(
     }
 
     override suspend fun getEarnings(period: EarningsPeriod): EarningsSummary {
-        val now = System.currentTimeMillis()
-        return try {
-            val dto = api.getEarnings(period.wire)
-            EarningsSummary(
-                period = period,
-                grossTzs = dto.grossTzs,
-                commissionTzs = dto.commissionTzs,
-                netTzs = dto.netTzs,
-                trips = dto.trips,
-                distanceMeters = dto.distanceMeters,
-                onlineMinutes = dto.onlineMinutes,
-                daily = emptyList(),
-                records = _state.value.history
-            )
-        } catch (_: Exception) {
-            DriverRules.summarize(_state.value.history, period, now, _state.value.onlineMinutesToday)
-        }
+        val dto = api.getEarnings(period.wire)
+        val start = DriverRules.periodStart(period, System.currentTimeMillis())
+        return EarningsSummary(
+            period = period,
+            grossTzs = dto.grossTzs,
+            commissionTzs = dto.commissionTzs,
+            netTzs = dto.netTzs,
+            trips = dto.trips,
+            distanceMeters = dto.distanceMeters,
+            onlineMinutes = dto.onlineMinutes,
+            daily = emptyList(),
+            records =
+                _state.value.history.filter {
+                    it.endedAtMillis >= start && it.status == TripStatus.COMPLETED
+                },
+        )
     }
 
     override suspend fun refreshHistory(): Result<List<TripRecord>> = runCatching {
         val resp = api.getRides()
-        val records = resp.rides.map(::mapRideDtoToTripRecord)
+        val records =
+            resp.rides
+                .filter { it.status == "completed" || it.status.startsWith("cancelled") }
+                .map(::mapRideDtoToTripRecord)
         _state.update { it.copy(history = records) }
         records
     }
@@ -223,26 +300,30 @@ class RemoteDriverRepository(
     private fun mapRideDtoToActiveTrip(dto: DriverRideDto): ActiveTrip {
         val pickup = mapPoint(dto.pickup)
         val dropoff = mapPoint(dto.dropoff)
-        val fare = dto.finalFare ?: dto.estimatedFare ?: 5000L
-        val offer = RideOffer(
-            id = dto.id,
-            passengerName = dto.passenger?.fullName ?: dto.passenger?.name ?: "Passenger",
-            passengerRating = dto.passenger?.rating ?: 5.0,
-            passengerPhone = dto.passenger?.phone,
-            pickup = pickup,
-            dropoff = dropoff,
-            fareTzs = fare,
-            distanceToPickupMeters = 500,
-            tripDistanceMeters = dto.distanceMeters ?: 4000L,
-            tripDurationSeconds = dto.durationSeconds ?: 600L,
-            paymentMethod = dto.paymentMethod ?: "cash",
-            vehicleType = VehicleType.fromWire(dto.vehicleType)
-        )
-        val phase = when (dto.status.lowercase()) {
-            "arrived" -> TripPhase.ARRIVED
-            "in_progress", "started" -> TripPhase.IN_TRIP
-            else -> TripPhase.TO_PICKUP
-        }
+        val fare = dto.finalFare ?: dto.estimatedFare ?: 0L
+        val offer =
+            RideOffer(
+                id = dto.id,
+                passengerName = dto.passenger?.fullName ?: dto.passenger?.name ?: "Passenger",
+                passengerRating = dto.passenger?.rating ?: 5.0,
+                passengerPhone = dto.passenger?.phone,
+                pickup = pickup,
+                dropoff = dropoff,
+                fareTzs = fare,
+                distanceToPickupMeters = 0,
+                tripDistanceMeters = dto.distanceMeters ?: 0L,
+                tripDurationSeconds = dto.durationSeconds ?: 0L,
+                paymentMethod = dto.paymentMethod ?: "cash",
+                vehicleType = VehicleType.fromWire(dto.vehicleType),
+            )
+        val phase =
+            when (dto.status.lowercase()) {
+                "driver_arrived",
+                "arrived" -> TripPhase.ARRIVED
+                "in_progress",
+                "started" -> TripPhase.IN_TRIP
+                else -> TripPhase.TO_PICKUP
+            }
         return ActiveTrip(id = dto.id, offer = offer, phase = phase)
     }
 
@@ -250,7 +331,7 @@ class RemoteDriverRepository(
         val pickup = mapPoint(dto.pickup)
         val dropoff = mapPoint(dto.dropoff)
         val fare = dto.finalFare ?: dto.estimatedFare ?: 0L
-        val comm = dto.commissionTzs ?: DriverRules.commission(fare)
+        val comm = dto.commissionTzs ?: 0L
         val net = dto.driverEarningsTzs ?: (fare - comm)
         return TripRecord(
             id = dto.id,
@@ -262,11 +343,19 @@ class RemoteDriverRepository(
             netTzs = net,
             distanceMeters = dto.distanceMeters ?: 0L,
             durationSeconds = dto.durationSeconds ?: 0L,
-            status = if (dto.status.equals("cancelled", true)) TripStatus.CANCELLED else TripStatus.COMPLETED,
-            endedAtMillis = System.currentTimeMillis(),
+            status =
+                if (dto.status.startsWith("cancelled", true)) TripStatus.CANCELLED
+                else TripStatus.COMPLETED,
+            endedAtMillis = parseTime(dto.completedAt ?: dto.createdAt),
             paymentMethod = dto.paymentMethod ?: "cash",
-            cancelReason = dto.cancelReason
+            cancelReason = dto.cancelReason,
         )
+    }
+
+    private fun parseTime(value: String?): Long {
+        val format = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.US)
+        format.timeZone = java.util.TimeZone.getTimeZone("UTC")
+        return runCatching { format.parse(value.orEmpty().take(19))?.time ?: 0L }.getOrDefault(0L)
     }
 
     private fun mapPoint(dto: DriverPointDto): Place =

@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.StateFlow
 interface DriverRepository {
     val state: StateFlow<DriverState>
 
+    suspend fun syncRides() {}
     suspend fun refreshProfile(): Result<DriverProfile>
     suspend fun updateProfile(fullName: String, phone: String?): Result<DriverProfile>
     suspend fun updateVehicle(vehicle: Vehicle): Result<Vehicle>

@@ -136,11 +136,17 @@ fun DriverNavGraph(
                 }
 
                 // Main Driver Routes
+                composable("shared-rides") { com.example.ridedriver.ui.screens.SharedRideScreen { navController.popBackStack() } }
                 composable(DriverRoutes.HOME) {
-                    DriverHomeScreen(
-                        onNavigateToEarnings = { navController.navigate(DriverRoutes.EARNINGS) },
-                        onNavigateToProfile = { navController.navigate(DriverRoutes.PROFILE) }
-                    )
+                    androidx.compose.foundation.layout.Column {
+                        androidx.compose.material3.TextButton(onClick = { navController.navigate("shared-rides") }) {
+                            androidx.compose.material3.Text("Publish or manage a shared ride")
+                        }
+                        DriverHomeScreen(
+                            onNavigateToEarnings = { navController.navigate(DriverRoutes.EARNINGS) },
+                            onNavigateToProfile = { navController.navigate(DriverRoutes.PROFILE) }
+                        )
+                    }
                 }
 
                 composable(DriverRoutes.EARNINGS) {
@@ -180,14 +186,14 @@ fun DriverNavGraph(
                 }
 
                 composable(DriverRoutes.VEHICLE_EDIT) {
-                    VehicleEditScreen(
-                        onBack = { navController.popBackStack() }
+                    com.example.ridedriver.ui.screens.DriverEnrollment(documents = false,
+                        back = { navController.popBackStack() }
                     )
                 }
 
                 composable(DriverRoutes.DOCUMENTS) {
-                    DocumentsScreen(
-                        onBack = { navController.popBackStack() }
+                    com.example.ridedriver.ui.screens.DriverEnrollment(documents = true,
+                        back = { navController.popBackStack() }
                     )
                 }
 
@@ -196,6 +202,7 @@ fun DriverNavGraph(
                         onBack = { navController.popBackStack() },
                         onNavigateToSupport = { navController.navigate(DriverRoutes.SUPPORT) },
                         onLogout = {
+                            com.example.ridedriver.data.driver.DriverRepositoryProvider.reset()
                             navController.navigate(DriverRoutes.SIGN_IN) {
                                 popUpTo(0) { inclusive = true }
                             }

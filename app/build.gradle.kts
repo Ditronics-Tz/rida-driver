@@ -19,13 +19,13 @@ android {
         versionCode = 1
         versionName = "1.0"
 
+        val apiBase = providers.gradleProperty("rida.apiBaseUrl").orElse("https://rida-backend.ditronics.co.tz/api/v1/").get()
+        require(apiBase.startsWith("https://") && apiBase.endsWith("/") && '"' !in apiBase) { "rida.apiBaseUrl must be an HTTPS base URL ending in /" }
+        buildConfigField("String", "API_BASE_URL", "\"" + apiBase + "\"")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        // Driver endpoints on the Rida backend are not documented yet. While this is
-        // true the app runs the driver flows against an on-device simulator
-        // (MockDriverRepository). Auth (login/register/refresh/Google) is always live.
-        // Flip to false once /api/v1/driver/* matches DriverApi.kt.
-        buildConfigField("boolean", "USE_MOCK_DRIVER_API", "true")
+        // Use the simulator only when explicitly requested for development.
+        buildConfigField("boolean", "USE_MOCK_DRIVER_API", providers.gradleProperty("rida.mockDriver").orNull.toBoolean().toString())
     }
 
     buildTypes {

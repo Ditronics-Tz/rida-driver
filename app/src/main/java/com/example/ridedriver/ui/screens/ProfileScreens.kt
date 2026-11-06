@@ -70,6 +70,7 @@ fun DriverProfileScreen(
     val state by repo.state.collectAsState()
     val profile = state.profile
     val vehicle = state.vehicle
+    androidx.compose.runtime.LaunchedEffect(repo) { repo.refreshProfile(); repo.refreshDocuments() }
     val docs = state.documents
 
     Column(
@@ -212,7 +213,7 @@ fun DriverProfileScreen(
                     }
                     Spacer(Modifier.width(14.dp))
                     Column(modifier = Modifier.weight(1f)) {
-                        Text("4 of 4 Documents Approved", fontSize = 14.5.sp, fontWeight = FontWeight.Bold, color = RidaInk)
+                        Text("${docs.count { it.status == DocumentStatus.APPROVED }} approved documents", fontSize = 14.5.sp, fontWeight = FontWeight.Bold, color = RidaInk)
                         Text("License, Insurance, LATRA & Inspection", fontSize = 12.sp, color = RidaSecondary)
                     }
                     RidaIcon(icon = RidaIcons.ChevronRight, contentDescription = null, tint = RidaSecondary, modifier = Modifier.size(18.dp))

@@ -17,7 +17,7 @@ import retrofit2.http.Query
 // https://nominatim.openstreetmap.org/search?q=Kariakoo,Dar+es+Salaam&format=jsonv2
 // ---------------------------------------------------------------------------
 
-@JsonClass(generateAdapter = true)
+@JsonClass(generateAdapter = false)
 data class NominatimPlace(
     @param:Json(name = "place_id") val placeId: Long,
     @param:Json(name = "display_name") val displayName: String,
@@ -53,27 +53,27 @@ interface NominatimApi {
 // https://router.project-osrm.org/route/v1/driving/{lon1},{lat1};{lon2},{lat2}?overview=full&geometries=geojson
 // ---------------------------------------------------------------------------
 
-@JsonClass(generateAdapter = true)
+@JsonClass(generateAdapter = false)
 data class OsrmResponse(
     val code: String,
     val routes: List<OsrmRoute>,
     val waypoints: List<OsrmWaypoint>? = null
 )
 
-@JsonClass(generateAdapter = true)
+@JsonClass(generateAdapter = false)
 data class OsrmRoute(
     val distance: Double, // meters
     val duration: Double, // seconds
     val geometry: OsrmGeometry
 )
 
-@JsonClass(generateAdapter = true)
+@JsonClass(generateAdapter = false)
 data class OsrmGeometry(
     val coordinates: List<List<Double>>, // [lon, lat][]
     val type: String = "LineString"
 )
 
-@JsonClass(generateAdapter = true)
+@JsonClass(generateAdapter = false)
 data class OsrmWaypoint(
     val name: String?,
     val location: List<Double>

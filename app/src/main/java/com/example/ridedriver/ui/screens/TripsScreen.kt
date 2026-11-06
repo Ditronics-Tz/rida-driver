@@ -64,6 +64,7 @@ fun TripsHistoryScreen(
 ) {
     val repo = remember { DriverRepositoryProvider.get() }
     val state by repo.state.collectAsState()
+    LaunchedEffect(repo) { repo.refreshHistory() }
     var filter by remember { mutableStateOf<TripStatus?>(null) } // null = All
 
     val filteredTrips = state.history.filter {

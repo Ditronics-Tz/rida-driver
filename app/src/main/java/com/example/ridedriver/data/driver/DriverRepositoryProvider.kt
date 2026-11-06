@@ -9,9 +9,11 @@ import com.example.ridedriver.BuildConfig
 object DriverRepositoryProvider {
 
     private val mockInstance: DriverRepository by lazy { MockDriverRepository() }
-    private val remoteInstance: DriverRepository by lazy { RemoteDriverRepository() }
+    private var remoteInstance: DriverRepository? = null
 
-    fun get(): DriverRepository {
-        return if (BuildConfig.USE_MOCK_DRIVER_API) mockInstance else remoteInstance
+    @Synchronized fun reset() { remoteInstance = null }
+
+    @Synchronized fun get(): DriverRepository {
+        return if (BuildConfig.USE_MOCK_DRIVER_API) mockInstance else remoteInstance ?: RemoteDriverRepository().also { remoteInstance = it }
     }
 }
