@@ -99,7 +99,8 @@ fun DriverHomeScreen(
     val state by repo.state.collectAsState()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val isPreview = LocalInspectionMode.current
+    var connectionError by remember { mutableStateOf("") }
+ val isPreview = LocalInspectionMode.current
 
     var mapCenter by remember { mutableStateOf(GeoPoint(-6.7924, 39.2083)) }
     var mapZoom by remember { mutableStateOf(14.5) }
@@ -125,12 +126,15 @@ fun DriverHomeScreen(
                     mapCenter = gp
                     mapViewRef?.animateTo(gp, 15.5)
                     scope.launch {
-                        repo.updateLocation(loc.latitude, loc.longitude, loc.bearing)
+                        try {if(loc.accuracy<=100&&android.os.SystemClock.elapsedRealtimeNanos()-loc.elapsedRealtimeNanos in 0..120_000_000_000L) repo.updateLocation(loc.latitude,loc.longitude,loc.bearing)}catch(e:kotlinx.coroutines.CancellationException){throw e}catch(_:Exception){connectionError="Driver location could not be sent. Retrying…"}
                     }
                 }
             }
     }
 
+    if(connectionError.isNotBlank()) androidx.compose.material3.Text(connectionError)
+ val locationStatus by com.example.ridedriver.data.location.DriverLocationService.state.collectAsState()
+ if(state.online||state.trip!=null) androidx.compose.material3.Text(locationStatus)
     val owner = LocalLifecycleOwner.current
     LaunchedEffect(owner, isPermissionGranted, state.online, state.trip?.id) {
         if (!isPreview) owner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
@@ -139,9 +143,11 @@ fun DriverHomeScreen(
             while (true) {
                 try {
                     repo.syncRides()
+ connectionError=""
+ if(state.online||state.trip!=null) com.example.ridedriver.data.location.DriverLocationService.startFromVisibleScreen(context)
                     if (cycles++ % 4 == 0 && (state.online || state.trip != null)) fetchLocation()
                 } catch (e: kotlinx.coroutines.CancellationException) { throw e }
-                  catch (_: Exception) { /* Recover active rides and offers on the next poll. */ }
+                  catch (_: Exception) { connectionError="Live ride connection interrupted. Retrying…" }
                 kotlinx.coroutines.delay(2500)
             }
         }
@@ -162,7 +168,7 @@ fun DriverHomeScreen(
     LaunchedEffect(state.trip?.phase, state.trip?.id, currentGeoLocation) {
         val trip = state.trip
         if (trip != null) {
-            val origin = currentGeoLocation ?: mapCenter
+            val origin = currentGeoLocation ?: return@LaunchedEffect
             val dest = trip.target
             try {
                 val coords = osrmCoords(origin.longitude, origin.latitude, dest.lng, dest.lat)
@@ -272,7 +278,7 @@ fun DriverHomeScreen(
                         },
                         onDecline = {
                             scope.launch {
-                                repo.declineOffer(offer.id)
+                                repo.declineOffer(offer.id).onFailure { Toast.makeText(context,transportError(it as? Exception ?: Exception(it)),Toast.LENGTH_LONG).show() }
                             }
                         }
                     )
@@ -290,16 +296,18 @@ fun DriverHomeScreen(
                         trip = trip,
                         onAdvancePhase = {
                             scope.launch {
-                                repo.advanceTripPhase()
+                                repo.advanceTripPhase().onFailure { Toast.makeText(context,transportError(it as? Exception ?: Exception(it)),Toast.LENGTH_LONG).show() }
                             }
                         },
                         onCallPassenger = {
-                            val phone = trip.offer.passengerPhone ?: "+255712345678"
-                            context.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:$phone")))
+                            val phone=trip.offer.passengerPhone
+ if(phone.isNullOrBlank()) Toast.makeText(context,"Passenger phone unavailable. Use trip support.",Toast.LENGTH_LONG).show()
+ else context.startActivity(Intent(Intent.ACTION_DIAL,Uri.parse("tel:$phone")))
                         },
                         onMessagePassenger = {
-                            val phone = trip.offer.passengerPhone ?: "+255712345678"
-                            context.startActivity(Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:$phone")))
+                            val phone=trip.offer.passengerPhone
+ if(phone.isNullOrBlank()) Toast.makeText(context,"Passenger phone unavailable. Use trip support.",Toast.LENGTH_LONG).show()
+ else context.startActivity(Intent(Intent.ACTION_SENDTO,Uri.parse("smsto:$phone")))
                         },
                         onNavigateExternal = {
                             val dest = trip.target
@@ -346,7 +354,7 @@ fun DriverHomeScreen(
                         onClick = {
                             showCancelDialog = false
                             scope.launch {
-                                repo.cancelActiveTrip("Driver cancelled")
+                                repo.cancelActiveTrip("Driver cancelled").onFailure { Toast.makeText(context,transportError(it as? Exception ?: Exception(it)),Toast.LENGTH_LONG).show() }
                             }
                         }
                     ) {

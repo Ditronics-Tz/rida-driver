@@ -10,7 +10,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import com.example.ridedriver.data.remote.*
 import com.google.android.gms.location.LocationServices
@@ -63,6 +65,9 @@ internal suspend fun <T> rideCommand(
 @Composable
 internal fun PlaceField(label: String, selected: SharedPoint?, onSelect: (SharedPoint?) -> Unit) {
     var query by remember { mutableStateOf(selected?.address.orEmpty()) }
+ var manual by remember {mutableStateOf(false)}
+ var latitude by remember {mutableStateOf("")}
+ var longitude by remember {mutableStateOf("")}
     var results by remember { mutableStateOf(emptyList<NominatimPlace>()) }
     var error by remember { mutableStateOf("") }
     var searching by remember { mutableStateOf(false) }
@@ -77,7 +82,7 @@ internal fun PlaceField(label: String, selected: SharedPoint?, onSelect: (Shared
             },
             label = { Text(label) },
             singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().testTag("$label-query"),
         )
         TextButton(
             enabled = !searching && query.isNotBlank(),
@@ -101,6 +106,12 @@ internal fun PlaceField(label: String, selected: SharedPoint?, onSelect: (Shared
         ) {
             Text(if (searching) "Searching…" else "Find place")
         }
+        TextButton(modifier=Modifier.testTag("$label-manual"),onClick={manual=!manual}){Text("Choose coordinates manually")}
+ if(manual) {
+ OutlinedTextField(latitude,{latitude=it},label={Text("Latitude")},modifier=Modifier.testTag("$label-latitude"))
+ OutlinedTextField(longitude,{longitude=it},label={Text("Longitude")},modifier=Modifier.testTag("$label-longitude"))
+ TextButton(modifier=Modifier.testTag("$label-use-coordinates"),onClick={val lat=latitude.toDoubleOrNull();val lng=longitude.toDoubleOrNull();if(lat!=null&&lng!=null&&lat in -90.0..90.0&&lng in -180.0..180.0&&query.isNotBlank()){onSelect(SharedPoint(lat,lng,query.take(250)));manual=false;error=""}else error="Enter a place label and valid coordinates."}){Text("Use coordinates")}
+ }
         results.forEach { place ->
             TextButton(
                 onClick = {
@@ -191,62 +202,62 @@ internal fun ShareDriverLocation(trip: String) {
             Text("Share live location on this trip")
         }
     } else {
-        Text(status)
-        LaunchedEffect(trip, owner) {
-            owner.lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) {
-                kotlinx.coroutines.coroutineScope {
-                    val scope = this
-                    val client = LocationServices.getFusedLocationProviderClient(context)
-                    val callback =
-                        object : com.google.android.gms.location.LocationCallback() {
-                            override fun onLocationResult(
-                                result: com.google.android.gms.location.LocationResult
-                            ) {
-                                val point = result.lastLocation ?: return
-                                val age =
-                                    android.os.SystemClock.elapsedRealtimeNanos() -
-                                        point.elapsedRealtimeNanos
-                                if (age !in 0..120_000_000_000L || point.accuracy > 100) {
-                                    status = "Waiting for a fresh GPS fix"
-                                    return
-                                }
-                                scope.launch {
-                                    try {
-                                        val sent =
-                                            RidaApiClient.driverApi.updateLocation(
-                                                DriverLocationRequest(
-                                                    point.latitude,
-                                                    point.longitude,
-                                                    accuracy = point.accuracy,
-                                                )
-                                            )
-                                        status =
-                                            if (sent.isSuccessful) "Sharing live trip location"
-                                            else "Could not share trip location"
-                                    } catch (e: Exception) {
-                                        status = transportError(e)
-                                    }
-                                }
-                            }
-                        }
-                    try {
-                        client
-                            .requestLocationUpdates(
-                                com.google.android.gms.location.LocationRequest.Builder(
-                                        Priority.PRIORITY_HIGH_ACCURACY,
-                                        10000,
-                                    )
-                                    .build(),
-                                callback,
-                                android.os.Looper.getMainLooper(),
-                            )
-                            .addOnFailureListener { status = "Driver location unavailable" }
-                        kotlinx.coroutines.awaitCancellation()
-                    } finally {
-                        client.removeLocationUpdates(callback)
-                    }
-                }
-            }
-        }
-    }
+ val serviceState by com.example.ridedriver.data.location.DriverLocationService.state.collectAsState()
+ Text(serviceState)
+ LaunchedEffect(trip,owner){owner.lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED){
+ com.example.ridedriver.data.location.DriverLocationService.startFromVisibleScreen(context)
+ kotlinx.coroutines.awaitCancellation()
+ }}
+ }
+}
+
+@Composable
+internal fun SharedTripHelp(trip: SharedTrip) {
+ val scope=rememberCoroutineScope()
+ var open by remember {mutableStateOf(false)}
+ var description by remember {mutableStateOf("")}
+ var busy by remember {mutableStateOf(false)}
+ var notice by remember {mutableStateOf("")}
+ var location by remember {mutableStateOf<SharedPoint?>(null)}
+ TextButton(onClick={open=!open}) {Text("Safety and trip support")}
+ if(open) {
+ OutlinedTextField(description,{description=it.take(4000)},label={Text("Describe the trip issue")})
+ Button(enabled=!busy&&description.isNotBlank(),onClick={busy=true;scope.launch{try{
+ RidaApiClient.transport.support(SharedSupportInput("Shared trip support",description,shared_trip_id=trip.id));notice="Support request sent with your shared-trip reference.";description=""
+ }catch(e:Exception){notice=transportError(e)}finally{busy=false}}}){Text("Contact trip support")}
+ if(trip.status in listOf("waiting","in_progress")){
+ Text("For immediate danger, contact local emergency services. Rida SOS alerts the support team; delivery depends on connectivity.")
+ UseLocation {location=it}
+ PlaceField("Your current location (manual fallback)",location){location=it}
+ Button(enabled=!busy&&location!=null,onClick={val p=location;if(p!=null){busy=true;scope.launch{try{
+ RidaApiClient.transport.sos(trip.id,SharedSOSInput(p.lat,p.lng,100.0));notice="SOS alert sent to Rida support."
+ }catch(e:Exception){notice=transportError(e)}finally{busy=false}}}}){Text("Send SOS for this shared trip")}
+ }
+ }
+ if(notice.isNotBlank()) Text(notice)
+}
+
+@Composable
+internal fun SharedTripEntry(onOpen:()->Unit,label:String) {
+ val owner=androidx.lifecycle.compose.LocalLifecycleOwner.current
+ var active by remember {mutableStateOf(false)}
+ LaunchedEffect(owner) {
+ owner.lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED){
+ while(true){try{
+ active=RidaApiClient.transport.list("mine").trips.any{it.status in listOf("waiting","in_progress")}
+ }catch(e:kotlinx.coroutines.CancellationException){throw e}catch(_:Exception){}
+ kotlinx.coroutines.delay(5000)
+ }
+ }
+ }
+ TextButton(onClick=onOpen){Text(if(active) "Resume your shared trip" else label)}
+}
+
+@Composable
+internal fun SharedTripRating(trip:SharedTrip,seatId:String?=null){
+ val scope=rememberCoroutineScope();var stars by remember(trip.id,seatId){mutableIntStateOf(0)};var info by remember{mutableStateOf("")};var busy by remember{mutableStateOf(false)}
+ Text(if(seatId==null) "Rate your shared-trip driver" else "Rate ${trip.passenger_names[seatId]?:"passenger"}")
+ Row{(1..5).forEach{n->TextButton(enabled=!busy,onClick={stars=n}){Text(if(n==stars) "★ $n" else "$n")}}}
+ TextButton(enabled=stars>0&&!busy,onClick={busy=true;scope.launch{try{RidaApiClient.transport.rate(trip.id,SharedRatingInput(stars,seat_id=seatId));info="Rating saved."}catch(e:Exception){info=transportError(e)}finally{busy=false}}}){Text("Save shared-trip rating")}
+ if(info.isNotBlank())Text(info)
 }

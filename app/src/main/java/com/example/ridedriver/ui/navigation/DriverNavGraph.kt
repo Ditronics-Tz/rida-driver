@@ -139,9 +139,7 @@ fun DriverNavGraph(
                 composable("shared-rides") { com.example.ridedriver.ui.screens.SharedRideScreen { navController.popBackStack() } }
                 composable(DriverRoutes.HOME) {
                     androidx.compose.foundation.layout.Column {
-                        androidx.compose.material3.TextButton(onClick = { navController.navigate("shared-rides") }) {
-                            androidx.compose.material3.Text("Publish or manage a shared ride")
-                        }
+                        com.example.ridedriver.ui.screens.SharedTripEntry(onOpen={navController.navigate("shared-rides")},label="Publish or manage a shared ride")
                         DriverHomeScreen(
                             onNavigateToEarnings = { navController.navigate(DriverRoutes.EARNINGS) },
                             onNavigateToProfile = { navController.navigate(DriverRoutes.PROFILE) }

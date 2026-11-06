@@ -20,17 +20,25 @@ import kotlinx.coroutines.flow.update
 class RemoteDriverRepository(private val api: DriverApi = RidaApiClient.driverApi) :
     DriverRepository {
 
-    private val _state = MutableStateFlow(DriverState())
+    private suspend fun <T> command(signature:String,call:suspend(String)->T):T {
+ val actor=RidaApiClient.api.me().user.id
+ return com.example.ridedriver.ui.screens.rideCommand(RidaApiClient.requireContext(),actor,"hail/$signature",call)
+ }
+ private val _state = MutableStateFlow(DriverState())
     override val state: StateFlow<DriverState> = _state.asStateFlow()
 
     override suspend fun syncRides() {
+        val previous=_state.value.trip
         val active = api.getCurrentRide()
         if (!active.isSuccessful) throw retrofit2.HttpException(active)
         val trip = active.body()?.let(::mapRideDtoToActiveTrip)
+        val closed=if(trip==null&&previous!=null) api.ride(previous.id).takeIf{it.status=="completed"||it.status.startsWith("cancelled") }?.let(::mapRideDtoToTripRecord) else null
         val offer = if (trip == null) api.getOffers().offers.firstOrNull() else null
         _state.update { state ->
             state.copy(
                 trip = trip,
+                lastCompleted=closed?.takeIf{it.status==TripStatus.COMPLETED}?:state.lastCompleted,
+                history=if(closed!=null) listOf(closed)+state.history.filter{it.id!=closed.id} else state.history,
                 offer =
                     offer?.let { dto ->
                         if (state.offer?.id == dto.id) state.offer
@@ -64,9 +72,9 @@ class RemoteDriverRepository(private val api: DriverApi = RidaApiClient.driverAp
                 phone = me.phoneNumber ?: me.phone.orEmpty(),
                 email = me.email.orEmpty(),
                 photoUrl = dto.profilePictureUrl,
-                rating = dto.rating ?: 5.0,
+                rating = dto.rating ?: 0.0,
                 totalTrips = dto.totalTrips ?: 0,
-                acceptanceRate = dto.acceptanceRate?.toInt() ?: 100,
+                acceptanceRate = dto.acceptanceRate?.toInt() ?: 0,
                 cancellationRate = dto.cancellationRate?.toInt() ?: 0,
                 verification =
                     when (dto.verificationStatus?.lowercase()) {
@@ -146,20 +154,15 @@ class RemoteDriverRepository(private val api: DriverApi = RidaApiClient.driverAp
 
     override suspend fun uploadDocument(docId: String, title: String): Result<DriverDocument> =
         runCatching {
-            // Document upload endpoint or multipart
-            DriverDocument(
-                id = docId,
-                title = title,
-                description = "",
-                status = DocumentStatus.PENDING,
-            )
+error("Select a document in Driver documents to upload it.")
         }
 
     override suspend fun setOnline(online: Boolean): Result<Unit> = runCatching {
         _state.update { it.copy(goingOnline = true) }
         try {
             val loc = _state.value.location
-            api.setStatus(DriverStatusRequest(online = online, lat = loc?.lat, lng = loc?.lng))
+            command("availability/$online"){key->api.setStatus(DriverStatusRequest(online = online, lat = loc?.lat, lng = loc?.lng),key)}
+ if(online&&loc!=null){val r=api.updateLocation(DriverLocationRequest(lat=loc.lat,lng=loc.lng));if(!r.isSuccessful)throw retrofit2.HttpException(r)}
             _state.update {
                 it.copy(
                     online = online,
@@ -182,53 +185,47 @@ class RemoteDriverRepository(private val api: DriverApi = RidaApiClient.driverAp
         _state.update { current ->
             current.copy(location = Place(lat, lng, address ?: current.location?.address ?: ""))
         }
-        runCatching {
-            api.updateLocation(DriverLocationRequest(lat = lat, lng = lng, bearing = bearing))
-        }
+        val result=api.updateLocation(DriverLocationRequest(lat=lat,lng=lng,bearing=bearing))
+ if(!result.isSuccessful)throw retrofit2.HttpException(result)
     }
 
     override suspend fun acceptOffer(offerId: String): Result<ActiveTrip> = runCatching {
-        val idempotency = RidaApiClient.generateIdempotencyKey()
-        val rideDto = api.acceptOffer(offerId, idempotency)
+        val rideDto = command("accept/$offerId"){key->api.acceptOffer(offerId,key)}
         val trip = mapRideDtoToActiveTrip(rideDto)
-        _state.update { it.copy(offer = null, trip = trip) }
+        _state.update { it.copy(offer = null, trip = trip,online=false) }
         trip
     }
 
     override suspend fun declineOffer(offerId: String): Result<Unit> = runCatching {
-        val response = api.declineOffer(offerId)
+        val response = command("decline/$offerId"){key->api.declineOffer(offerId,key)}
         if (!response.isSuccessful) throw retrofit2.HttpException(response)
         _state.update { if (it.offer?.id == offerId) it.copy(offer = null) else it }
     }
 
     override suspend fun advanceTripPhase(): Result<TripPhase> = runCatching {
         val currentTrip = _state.value.trip ?: error("No active trip")
-        val idempotency = RidaApiClient.generateIdempotencyKey()
+
         val next = DriverRules.nextPhase(currentTrip.phase) ?: error("Cannot advance finished trip")
 
         when (next) {
             TripPhase.ARRIVED -> {
-                api.markArrived(currentTrip.id, idempotency)
+                val response=command("arrived/${currentTrip.id}"){key->api.markArrived(currentTrip.id,key)}
                 val updated =
-                    currentTrip.copy(phase = next, arrivedAtMillis = System.currentTimeMillis())
+                    mapRideDtoToActiveTrip(response)
                 _state.update { it.copy(trip = updated) }
                 next
             }
             TripPhase.IN_TRIP -> {
-                api.startRide(currentTrip.id, idempotency)
+                val response=command("start/${currentTrip.id}"){key->api.startRide(currentTrip.id,key)}
                 val updated =
-                    currentTrip.copy(phase = next, startedAtMillis = System.currentTimeMillis())
+                    mapRideDtoToActiveTrip(response)
                 _state.update { it.copy(trip = updated) }
                 next
             }
             TripPhase.COMPLETED -> {
                 val loc = _state.value.location
                 val done =
-                    api.completeRide(
-                        currentTrip.id,
-                        idempotency,
-                        CompleteRideRequest(lat = loc?.lat, lng = loc?.lng),
-                    )
+                    command("complete/${currentTrip.id}"){key->api.completeRide(currentTrip.id,key,CompleteRideRequest())}
                 val record = mapRideDtoToTripRecord(done)
                 _state.update {
                     it.copy(
@@ -245,8 +242,7 @@ class RemoteDriverRepository(private val api: DriverApi = RidaApiClient.driverAp
 
     override suspend fun cancelActiveTrip(reason: String): Result<Unit> = runCatching {
         val currentTrip = _state.value.trip ?: error("No active trip")
-        val idempotency = RidaApiClient.generateIdempotencyKey()
-        val cancelled = api.cancelRide(currentTrip.id, idempotency, DriverCancelRequest(reason))
+        val cancelled=command("cancel/${currentTrip.id}/$reason"){key->api.cancelRide(currentTrip.id,key,DriverCancelRequest(reason))}
         val record = mapRideDtoToTripRecord(cancelled)
         _state.update { it.copy(trip = null, history = listOf(record) + it.history) }
     }
@@ -305,7 +301,7 @@ class RemoteDriverRepository(private val api: DriverApi = RidaApiClient.driverAp
             RideOffer(
                 id = dto.id,
                 passengerName = dto.passenger?.fullName ?: dto.passenger?.name ?: "Passenger",
-                passengerRating = dto.passenger?.rating ?: 5.0,
+                passengerRating = dto.passenger?.rating ?: 0.0,
                 passengerPhone = dto.passenger?.phone,
                 pickup = pickup,
                 dropoff = dropoff,

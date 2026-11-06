@@ -121,14 +121,16 @@ object SessionManager {
         }
     }
 
-    suspend fun updateTokens(context: Context, newAccessToken: String, newRefreshToken: String? = null) {
-        context.sessionStore.edit { prefs ->
-            prefs[ACCESS_TOKEN] = newAccessToken
-            if (!newRefreshToken.isNullOrBlank()) {
-                prefs[REFRESH_TOKEN] = newRefreshToken
-            }
-        }
-    }
+    suspend fun updateTokens(context: Context, newAccessToken: String, newRefreshToken: String? = null,expectedRefreshToken:String?=null):Boolean {
+ var applied=false
+ context.sessionStore.edit {prefs->
+ if(expectedRefreshToken!=null && (prefs[REFRESH_TOKEN]!=expectedRefreshToken || prefs[LOGGED_IN]!=true))return@edit
+ prefs[ACCESS_TOKEN]=newAccessToken
+ if(!newRefreshToken.isNullOrBlank())prefs[REFRESH_TOKEN]=newRefreshToken
+ applied=true
+ }
+ return applied
+ }
 
     suspend fun updateProfile(context: Context, name: String, phone: String, email: String) {
         context.sessionStore.edit { prefs ->
@@ -149,9 +151,18 @@ object SessionManager {
         }
     }
 
-    suspend fun clear(context: Context) {
-        context.sessionStore.edit { it.clear() }
-    }
+    suspend fun clear(context:Context,expectedRefreshToken:String?=null):Boolean {
+ var cleared=false
+ context.sessionStore.edit {prefs->
+ if(expectedRefreshToken!=null && prefs[REFRESH_TOKEN]!=expectedRefreshToken)return@edit
+ prefs.clear();cleared=true
+ }
+ if(cleared){
+ context.getSharedPreferences("shared_ride_requests",Context.MODE_PRIVATE).edit().clear().commit()
+ context.stopService(android.content.Intent(context,com.example.ridedriver.data.location.DriverLocationService::class.java))
+ }
+ return cleared
+ }
 }
 
 /** Shared validation for email/password auth fields and non-auth phone forms. */

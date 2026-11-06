@@ -1,3 +1,5 @@
+import java.net.URI
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -20,7 +22,9 @@ android {
         versionName = "1.0"
 
         val apiBase = providers.gradleProperty("rida.apiBaseUrl").orElse("https://rida-backend.ditronics.co.tz/api/v1/").get()
-        require(apiBase.startsWith("https://") && apiBase.endsWith("/") && '"' !in apiBase) { "rida.apiBaseUrl must be an HTTPS base URL ending in /" }
+        val localApi=providers.gradleProperty("rida.allowInsecureLocalApi").orNull.toBoolean() && apiBase.startsWith("http://") && URI(apiBase).host in listOf("10.0.2.2","127.0.0.1","localhost")
+        require(!localApi || gradle.startParameter.taskNames.none { it.contains("release",true) }) { "Local HTTP is debug-only" }
+        require((apiBase.startsWith("https://") || localApi) && apiBase.endsWith("/") && '"' !in apiBase) { "rida.apiBaseUrl must be an HTTPS base URL ending in /" }
         buildConfigField("String", "API_BASE_URL", "\"" + apiBase + "\"")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -87,8 +91,12 @@ dependencies {
     implementation(libs.google.id)
 
     debugImplementation(libs.androidx.ui.tooling)
+ debugImplementation("androidx.compose.ui:ui-test-manifest")
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(libs.androidx.junit)
+ androidTestImplementation(platform(libs.androidx.compose.bom))
+ androidTestImplementation("androidx.compose.ui:ui-test-junit4")
+ androidTestImplementation("androidx.test:rules:1.7.0")
 }

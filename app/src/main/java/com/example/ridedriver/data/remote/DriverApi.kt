@@ -65,6 +65,8 @@ interface DriverApi {
 
     // Active ride -----------------------------------------------------------------
 
+    @GET("rides/{id}") suspend fun ride(@Path("id") id:String):DriverRideDto
+
     @GET("driver/rides/current")
     suspend fun getCurrentRide(): Response<DriverRideDto>
 
@@ -134,7 +136,7 @@ data class DriverProfileDto(
     val phone: String? = null,
     val email: String? = null,
     @param:Json(name = "profile_picture_url") val profilePictureUrl: String? = null,
-    val rating: Double? = null,
+    @param:Json(name="average_rating") val rating: Double? = null,
     @param:Json(name = "total_trips") val totalTrips: Int? = null,
     @param:Json(name = "acceptance_rate") val acceptanceRate: Double? = null,
     @param:Json(name = "cancellation_rate") val cancellationRate: Double? = null,

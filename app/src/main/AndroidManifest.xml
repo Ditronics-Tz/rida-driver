@@ -4,6 +4,9 @@
 
     <!-- Map + routing + live driver location -->
     <uses-permission android:name="android.permission.INTERNET" />
+ <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+ <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+ <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
@@ -38,6 +41,7 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.RidaDriver">
+        <service android:name=".data.location.DriverLocationService" android:exported="false" android:foregroundServiceType="location" />
         <activity
             android:name=".MainActivity"
             android:theme="@style/Theme.Rida.Starting"
