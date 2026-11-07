@@ -102,7 +102,7 @@ fun ForgotPasswordScreen(
             Spacer(Modifier.height(8.dp))
             Text(
                 text = if (sent) "We sent a password reset link to $email. Please check your inbox."
-                else "Enter your registered driver email address and we'll send you instructions to reset your password.",
+                else "Password reset is currently unavailable. Contact Rida support for account recovery.",
                 fontSize = 14.sp,
                 lineHeight = 20.sp,
                 color = RidaSecondary
@@ -147,7 +147,7 @@ fun ForgotPasswordScreen(
                             if (err != null) {
                                 error = err
                             } else {
-                                sent = true
+                                error = "Password reset is currently unavailable. Contact Rida support for account recovery."
                             }
                         }
                     ),

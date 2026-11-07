@@ -10,6 +10,8 @@ import kotlinx.coroutines.flow.first
 object UserRepository {
 
     suspend fun refreshSessionFromApi(context: Context) {
+        val owner = SessionManager.observe(context).first()
+        if (!owner.loggedIn) return
         try {
             val me = RidaApiClient.api.me()
             val user = me.user
@@ -22,23 +24,26 @@ object UserRepository {
                 handle = handle,
                 phone = user.displayPhone(),
                 email = user.email ?: "",
-                profileCompleted = me.isProfileComplete()
+                profileCompleted = me.isProfileComplete(),
+                expectedSessionId = owner.sessionId
             )
-        } catch (_: Exception) { }
+        } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled } catch (_: Exception) { }
 
         try {
             DriverRepositoryProvider.get().refreshProfile()
             DriverRepositoryProvider.get().refreshDocuments()
             DriverRepositoryProvider.get().refreshHistory()
-        } catch (_: Exception) { }
+        } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled } catch (_: Exception) { }
     }
 
     suspend fun updateProfileOnServer(context: Context, fullName: String, phone: String?): Result<Unit> {
+        val owner = SessionManager.observe(context).first()
         return try {
-            DriverRepositoryProvider.get().updateProfile(fullName, phone)
+            DriverRepositoryProvider.get().updateProfile(fullName, phone).getOrThrow()
             val current = SessionManager.observe(context).first()
-            SessionManager.updateProfile(context, fullName, phone ?: current.phone, current.email)
+            SessionManager.updateProfile(context, fullName, phone ?: current.phone, current.email, expectedSessionId = owner.sessionId)
             Result.success(Unit)
+        } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled
         } catch (e: Exception) {
             Result.failure(e)
         }

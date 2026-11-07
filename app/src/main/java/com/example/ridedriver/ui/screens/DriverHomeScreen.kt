@@ -132,9 +132,13 @@ fun DriverHomeScreen(
             }
     }
 
-    if(connectionError.isNotBlank()) androidx.compose.material3.Text(connectionError)
- val locationStatus by com.example.ridedriver.data.location.DriverLocationService.state.collectAsState()
- if(state.online||state.trip!=null) androidx.compose.material3.Text(locationStatus)
+    if (connectionError.isNotBlank()) {
+        androidx.compose.material3.Text(connectionError)
+    }
+    val locationStatus by com.example.ridedriver.data.location.DriverLocationService.state.collectAsState()
+    if (state.online || state.trip != null) {
+        androidx.compose.material3.Text(locationStatus)
+    }
     val owner = LocalLifecycleOwner.current
     LaunchedEffect(owner, isPermissionGranted, state.online, state.trip?.id) {
         if (!isPreview) owner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
@@ -143,8 +147,10 @@ fun DriverHomeScreen(
             while (true) {
                 try {
                     repo.syncRides()
- connectionError=""
- if(state.online||state.trip!=null) com.example.ridedriver.data.location.DriverLocationService.startFromVisibleScreen(context)
+                    connectionError = ""
+                    if (state.online || state.trip != null) {
+                        com.example.ridedriver.data.location.DriverLocationService.startFromVisibleScreen(context)
+                    }
                     if (cycles++ % 4 == 0 && (state.online || state.trip != null)) fetchLocation()
                 } catch (e: kotlinx.coroutines.CancellationException) { throw e }
                   catch (_: Exception) { connectionError="Live ride connection interrupted. Retrying…" }
@@ -177,6 +183,7 @@ fun DriverHomeScreen(
                 if (!coordsList.isNullOrEmpty()) {
                     routePoints = coordsList.map { GeoPoint(it[1], it[0]) }
                 }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled
             } catch (_: Exception) {
                 routePoints = listOf(origin, GeoPoint(dest.lat, dest.lng))
             }

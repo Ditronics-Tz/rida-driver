@@ -39,3 +39,7 @@ are confirmed (adjust `DriverApi.kt` paths/fields if they differ).
 
 > Google sign-in needs an Android OAuth client for `com.example.ridedriver` + your
 > signing SHA-1 in the same Google Cloud project as `GoogleAuthManager.WEB_CLIENT_ID`.
+
+## Mobile state machines audit
+
+See the [passenger and driver state-machine audit](https://github.com/Ditronics-Tz/ride-client-kotlin/blob/main/docs/MOBILE_STATE_MACHINES.md) for screen states, invariants, transition tables, confirmed bugs, fixes and regression evidence.

@@ -63,22 +63,18 @@ import com.example.ridedriver.ui.components.RidaIcon
 import com.example.ridedriver.ui.components.RidaIcons
 import com.example.ridedriver.ui.theme.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.ensureActive
 
 @Composable
 fun SignUpScreen(
     onSignUpSuccess: () -> Unit,
     onBackToSignIn: () -> Unit
 ) {
-    var fullName by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
-    var phone by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
-    var selectedVehicleType by remember { mutableStateOf(VehicleType.CAR) }
 
-    var nameError by remember { mutableStateOf<String?>(null) }
     var emailError by remember { mutableStateOf<String?>(null) }
-    var phoneError by remember { mutableStateOf<String?>(null) }
     var pwError by remember { mutableStateOf<String?>(null) }
     var formError by remember { mutableStateOf<String?>(null) }
     var isLoading by remember { mutableStateOf(false) }
@@ -88,22 +84,13 @@ fun SignUpScreen(
 
     fun doSignUp() {
         if (isLoading) return
-        if (fullName.trim().length < 2) {
-            nameError = "Enter your full name"
-            return
-        }
         emailError = AuthValidation.emailError(email)
-        val normalizedPhone = TzPhone.normalize(phone)
-        if (normalizedPhone == null) {
-            phoneError = "Enter a valid Tanzania number (e.g. 0712345678)"
-            return
-        }
-        pwError = AuthValidation.passwordError(password)
+        pwError = AuthValidation.registrationPasswordError(password)
 
         if (emailError != null || pwError != null) return
 
+        isLoading = true
         scope.launch {
-            isLoading = true
             formError = null
             try {
                 // Register driver account with the backend
@@ -113,27 +100,24 @@ fun SignUpScreen(
                     role = "driver"
                 )
                 val sessionResp = RidaApiClient.api.register(regReq)
+                kotlinx.coroutines.currentCoroutineContext().ensureActive()
                 val user = sessionResp.user
 
                 SessionManager.save(
                     context = context,
-                    name = fullName.trim(),
+                    name = user.displayName(),
                     handle = email.substringBefore("@").let { "@$it" },
-                    phone = normalizedPhone,
+                    phone = user.displayPhone(),
                     email = email.trim(),
-                    profileCompleted = true,
+                    profileCompleted = sessionResp.isProfileComplete(),
                     accessToken = sessionResp.getEffectiveAccessToken(),
                     refreshToken = sessionResp.getEffectiveRefreshToken()
                 )
 
-                // Initialize driver profile & vehicle
-                val repo = DriverRepositoryProvider.get()
-                repo.updateProfile(fullName.trim(), normalizedPhone)
-                repo.updateVehicle(Vehicle(type = selectedVehicleType, make = "", model = "", color = "", plate = ""))
-
+                // Vehicle identifiers and documents use the canonical enrollment screen after login.
                 UserRepository.refreshSessionFromApi(context)
                 onSignUpSuccess()
-            } catch (e: Exception) {
+            } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled } catch (e: Exception) {
                 formError = RidaApiErrors.message(e, "Registration failed. Please check your details and try again.")
             } finally {
                 isLoading = false
@@ -190,26 +174,7 @@ fun SignUpScreen(
 
             Spacer(Modifier.height(24.dp))
 
-            // Full Name
-            Text("Full name", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = RidaInk)
-            Spacer(Modifier.height(6.dp))
-            OutlinedTextField(
-                value = fullName,
-                onValueChange = { fullName = it; nameError = null },
-                modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
-                placeholder = { Text("e.g. Juma Bakari", color = RidaHint, fontSize = 14.sp) },
-                leadingIcon = { RidaIcon(icon = RidaIcons.Account, contentDescription = null, tint = RidaHint, modifier = Modifier.size(20.dp)) },
-                singleLine = true,
-                isError = nameError != null,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-                shape = RoundedCornerShape(16.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedContainerColor = RidaField, unfocusedContainerColor = RidaField,
-                    focusedBorderColor = RidaPrimary, unfocusedBorderColor = RidaFieldBorder
-                )
-            )
-            if (nameError != null) Text(nameError.orEmpty(), color = Color(0xFFD92D20), fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp, start = 4.dp))
-
+            Text("Create your email login, then register your vehicle and documents from Profile. Personal name and phone editing is currently unavailable.", fontSize = 13.sp, color = RidaSecondary)
             Spacer(Modifier.height(14.dp))
 
             // Email
@@ -234,28 +199,6 @@ fun SignUpScreen(
 
             Spacer(Modifier.height(14.dp))
 
-            // Phone
-            Text("Phone number", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = RidaInk)
-            Spacer(Modifier.height(6.dp))
-            OutlinedTextField(
-                value = phone,
-                onValueChange = { phone = it; phoneError = null },
-                modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
-                placeholder = { Text("0712 345 678", color = RidaHint, fontSize = 14.sp) },
-                leadingIcon = { RidaIcon(icon = RidaIcons.Phone, contentDescription = null, tint = RidaHint, modifier = Modifier.size(20.dp)) },
-                singleLine = true,
-                isError = phoneError != null,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone, imeAction = ImeAction.Next),
-                shape = RoundedCornerShape(16.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedContainerColor = RidaField, unfocusedContainerColor = RidaField,
-                    focusedBorderColor = RidaPrimary, unfocusedBorderColor = RidaFieldBorder
-                )
-            )
-            if (phoneError != null) Text(phoneError.orEmpty(), color = Color(0xFFD92D20), fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp, start = 4.dp))
-
-            Spacer(Modifier.height(14.dp))
-
             // Password
             Text("Password", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = RidaInk)
             Spacer(Modifier.height(6.dp))
@@ -263,7 +206,7 @@ fun SignUpScreen(
                 value = password,
                 onValueChange = { password = it; pwError = null },
                 modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
-                placeholder = { Text("At least 6 characters", color = RidaHint, fontSize = 14.sp) },
+                placeholder = { Text("At least 10 characters", color = RidaHint, fontSize = 14.sp) },
                 leadingIcon = { RidaIcon(icon = RidaIcons.Lock, contentDescription = null, tint = RidaHint, modifier = Modifier.size(20.dp)) },
                 trailingIcon = {
                     IconButton(onClick = { passwordVisible = !passwordVisible }) {
@@ -288,50 +231,6 @@ fun SignUpScreen(
             if (pwError != null) Text(pwError.orEmpty(), color = Color(0xFFD92D20), fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp, start = 4.dp))
 
             Spacer(Modifier.height(20.dp))
-
-            // Vehicle Category Selection
-            Text("Vehicle Category", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = RidaInk)
-            Spacer(Modifier.height(8.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                VehicleType.entries.forEach { vType ->
-                    val isSelected = selectedVehicleType == vType
-                    Surface(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(12.dp))
-                            .clickable { selectedVehicleType = vType }
-                            .border(
-                                width = if (isSelected) 2.dp else 1.dp,
-                                color = if (isSelected) RidaPrimary else RidaFieldBorder,
-                                shape = RoundedCornerShape(12.dp)
-                            ),
-                        color = if (isSelected) RidaPrimary.copy(alpha = 0.08f) else RidaField
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(vertical = 12.dp, horizontal = 4.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            RidaIcon(
-                                icon = if (vType == VehicleType.BODA) RidaIcons.Navigation else RidaIcons.Vehicle,
-                                contentDescription = null,
-                                tint = if (isSelected) RidaActionEnd else RidaSecondary,
-                                modifier = Modifier.size(22.dp)
-                            )
-                            Spacer(Modifier.height(4.dp))
-                            Text(
-                                text = vType.label,
-                                fontSize = 11.sp,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                color = if (isSelected) RidaInk else RidaSecondary,
-                                maxLines = 1
-                            )
-                        }
-                    }
-                }
-            }
 
             if (formError != null) {
                 Text(text = formError.orEmpty(), color = Color(0xFFD92D20), fontSize = 12.sp, modifier = Modifier.padding(top = 12.dp, start = 4.dp))

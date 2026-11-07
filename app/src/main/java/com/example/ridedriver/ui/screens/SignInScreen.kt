@@ -74,6 +74,7 @@ import com.example.ridedriver.ui.components.RidaIcons
 import com.example.ridedriver.ui.components.RidaLogo
 import com.example.ridedriver.ui.theme.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.ensureActive
 
 private val RidaDivider = Color(0xFFE5EAE7)
 
@@ -100,12 +101,13 @@ fun SignInScreen(
         pwError = AuthValidation.passwordError(password)
         if (emailError != null || pwError != null) return
 
+        isLoading = true
         scope.launch {
-            isLoading = true
             formError = null
             try {
                 val loginReq = LoginRequest(email = email.trim(), password = password)
                 val sessionResp = RidaApiClient.api.login(loginReq)
+                kotlinx.coroutines.currentCoroutineContext().ensureActive()
                 val user = sessionResp.user
                 SessionManager.save(
                     context = context,
@@ -119,7 +121,7 @@ fun SignInScreen(
                 )
                 UserRepository.refreshSessionFromApi(context)
                 onSignInSuccess()
-            } catch (e: Exception) {
+            } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled } catch (e: Exception) {
                 formError = RidaApiErrors.message(e, "Sign in failed. Check your email and password.")
             } finally {
                 isLoading = false
@@ -340,8 +342,8 @@ fun SignInScreen(
             OutlinedButton(
                 onClick = {
                     if (isLoading) return@OutlinedButton
+                    isLoading = true
                     scope.launch {
-                        isLoading = true
                         formError = null
                         try {
                             val result = GoogleAuthManager.signIn(context)

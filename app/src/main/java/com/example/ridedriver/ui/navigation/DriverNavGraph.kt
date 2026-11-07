@@ -5,6 +5,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.ui.platform.LocalContext
+import com.example.ridedriver.data.local.SessionManager
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavHostController
@@ -35,6 +39,14 @@ fun DriverNavGraph(
 ) {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
+    val context = LocalContext.current
+    val session by SessionManager.observe(context).collectAsState(initial = null)
+    LaunchedEffect(session?.loggedIn, currentRoute) {
+        if (session?.loggedIn == false && currentRoute != null && currentRoute !in setOf(
+                DriverRoutes.SIGN_IN, DriverRoutes.SIGN_UP, DriverRoutes.FORGOT_PASSWORD)) {
+            navController.navigate(DriverRoutes.SIGN_IN) { popUpTo(0) { inclusive = true } }
+        }
+    }
 
     val mainTabs = listOf(
         DriverRoutes.HOME,
@@ -109,9 +121,7 @@ fun DriverNavGraph(
                 composable(DriverRoutes.SIGN_IN) {
                     SignInScreen(
                         onSignInSuccess = {
-                            navController.navigate(DriverRoutes.HOME) {
-                                popUpTo(DriverRoutes.SIGN_IN) { inclusive = true }
-                            }
+                            navController.openHomeAfterAuthentication()
                         },
                         onForgotPassword = { navController.navigate(DriverRoutes.FORGOT_PASSWORD) },
                         onSignUp = { navController.navigate(DriverRoutes.SIGN_UP) }
@@ -121,9 +131,7 @@ fun DriverNavGraph(
                 composable(DriverRoutes.SIGN_UP) {
                     SignUpScreen(
                         onSignUpSuccess = {
-                            navController.navigate(DriverRoutes.HOME) {
-                                popUpTo(DriverRoutes.SIGN_UP) { inclusive = true }
-                            }
+                            navController.openHomeAfterAuthentication()
                         },
                         onBackToSignIn = { navController.popBackStack() }
                     )
@@ -215,5 +223,13 @@ fun DriverNavGraph(
                 }
             }
         }
+    }
+}
+
+/** A new authenticated session must not restore an earlier login/signup stack. */
+internal fun NavHostController.openHomeAfterAuthentication() {
+    navigate(DriverRoutes.HOME) {
+        popUpTo(graph.id) { inclusive = true }
+        launchSingleTop = true
     }
 }

@@ -24,7 +24,7 @@ import kotlinx.coroutines.sync.withLock
 fun SharedRideScreen(back: () -> Unit) {
  val context=LocalContext.current
  val session by com.example.ridedriver.data.local.SessionManager.observe(context).collectAsState(initial=com.example.ridedriver.data.local.SessionManager.Session())
- key(session.loggedIn,session.email) { if(session.loggedIn) SharedRideContent(back) else Text("Sign in to view shared rides.") }
+ key(session.loggedIn,session.sessionId) { if(session.loggedIn) SharedRideContent(back) else Text("Sign in to view shared rides.") }
 }
 
 @Composable
@@ -59,7 +59,10 @@ private fun SharedRideContent(back: () -> Unit) {
     suspend fun refresh() {
         if (actor.isEmpty()) actor = RidaApiClient.api.me().user.id
         fees = api.fees()
- if(capacity.isBlank()) capacity=RidaApiClient.driverApi.verification().profile.passenger_seats.takeIf{it>0}?.toString().orEmpty()
+        if (capacity.isBlank()) {
+            capacity = RidaApiClient.driverApi.verification().profile.passenger_seats
+                .takeIf { it > 0 }?.toString().orEmpty()
+        }
         val activePage=mergeTransportSnapshots(listOfNotNull(active)+mine,api.list("mine").trips)
  val page=if(history&&historyOffset>0)api.list("mine",offset=historyOffset).trips else activePage
  mine=mergeTransportSnapshots(mine,page)

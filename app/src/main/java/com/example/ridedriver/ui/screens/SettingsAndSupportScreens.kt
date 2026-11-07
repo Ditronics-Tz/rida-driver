@@ -31,6 +31,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -101,22 +102,22 @@ fun SettingsScreen(
             Column(modifier = Modifier.padding(16.dp)) {
                 SettingSwitchRow(
                     title = "Auto-accept ride requests",
-                    subtitle = "Automatically accept offers matching your category",
-                    checked = autoAccept,
+                    subtitle = "Unavailable; accept offers from Home",
+                    checked = false,
                     onCheckedChange = { autoAccept = it }
                 )
                 HorizontalDivider(color = RidaBorder, modifier = Modifier.padding(vertical = 12.dp))
                 SettingSwitchRow(
                     title = "Ride alert sounds",
-                    subtitle = "Play loud chime when receiving new trip requests",
-                    checked = soundAlerts,
+                    subtitle = "Alert sound settings are currently unavailable",
+                    checked = false,
                     onCheckedChange = { soundAlerts = it }
                 )
                 HorizontalDivider(color = RidaBorder, modifier = Modifier.padding(vertical = 12.dp))
                 SettingSwitchRow(
                     title = "External Google Maps",
-                    subtitle = "Open navigation directly in Google Maps application",
-                    checked = useGoogleMaps,
+                    subtitle = "Use the navigation button on your active trip",
+                    checked = false,
                     onCheckedChange = { useGoogleMaps = it }
                 )
             }
@@ -204,6 +205,7 @@ private fun SettingSwitchRow(
         }
         Switch(
             checked = checked,
+            enabled = false,
             onCheckedChange = onCheckedChange,
             colors = SwitchDefaults.colors(
                 checkedThumbColor = Color.White,
@@ -241,9 +243,11 @@ fun SupportScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var subject by remember { mutableStateOf("") }
-    var description by remember { mutableStateOf("") }
-    var isSending by remember { mutableStateOf(false) }
+    val form = remember { com.example.ridedriver.data.repository.SupportTicketForm(RidaApiClient.api, scope) }
+    val draft by form.state.collectAsState()
+    val subject = draft.subject
+    val description = draft.description
+    val isSending = draft.sending
 
     Column(
         modifier = Modifier
@@ -347,7 +351,7 @@ fun SupportScreen(
                 Spacer(Modifier.height(6.dp))
                 OutlinedTextField(
                     value = subject,
-                    onValueChange = { subject = it },
+                    onValueChange = { form.edit(subject = it) }, enabled = !isSending,
                     placeholder = { Text("e.g. Fare payment discrepancy", color = RidaSecondary) },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
@@ -364,7 +368,7 @@ fun SupportScreen(
                 Spacer(Modifier.height(6.dp))
                 OutlinedTextField(
                     value = description,
-                    onValueChange = { description = it },
+                    onValueChange = { form.edit(description = it) }, enabled = !isSending,
                     placeholder = { Text("Describe the issue in detail...", color = RidaSecondary) },
                     modifier = Modifier.fillMaxWidth().height(110.dp),
                     shape = RoundedCornerShape(12.dp),
@@ -374,6 +378,8 @@ fun SupportScreen(
                     )
                 )
 
+                draft.error?.let { Text(it, color = Color(0xFFD92D20)) }
+                draft.ticketId?.let { Text("Ticket $it submitted. Support will reply shortly.") }
                 Spacer(Modifier.height(18.dp))
 
                 Surface(
@@ -382,23 +388,7 @@ fun SupportScreen(
                         .height(48.dp)
                         .clip(RoundedCornerShape(12.dp))
                         .clickable(enabled = !isSending && subject.isNotBlank() && description.isNotBlank()) {
-                            scope.launch {
-                                isSending = true
-                                try {
-                                    RidaApiClient.api.createSupportTicket(
-                                        CreateTicketRequest(subject = subject.trim(), description = description.trim(), category = "driver")
-                                    )
-                                    Toast.makeText(context, "Ticket submitted. Support will reply shortly.", Toast.LENGTH_LONG).show()
-                                    subject = ""
-                                    description = ""
-                                } catch (_: Exception) {
-                                    Toast.makeText(context, "Ticket submitted to queue.", Toast.LENGTH_SHORT).show()
-                                    subject = ""
-                                    description = ""
-                                } finally {
-                                    isSending = false
-                                }
-                            }
+                            form.submit()
                         },
                     color = if (subject.isNotBlank() && description.isNotBlank()) RidaForest else Color(0xFFD1D5DB)
                 ) {

@@ -19,6 +19,7 @@ private val Context.sessionStore by preferencesDataStore("session")
  */
 object SessionManager {
 
+    private val SESSION_ID = stringPreferencesKey("session_id")
     private val LOGGED_IN = booleanPreferencesKey("logged_in")
     private val PROFILE_COMPLETED = booleanPreferencesKey("profile_completed")
     private val NAME = stringPreferencesKey("name")
@@ -32,6 +33,7 @@ object SessionManager {
 
     data class Session(
         val loggedIn: Boolean = false,
+        val sessionId: String = "",
         val name: String = "",
         val handle: String = "",
         val phone: String = "",
@@ -50,6 +52,7 @@ object SessionManager {
         context.sessionStore.data.map { prefs ->
             Session(
                 loggedIn = prefs[LOGGED_IN] == true,
+                sessionId = prefs[SESSION_ID].orEmpty(),
                 name = prefs[NAME].orEmpty().takeUnless { it == "Rida Rider" }.orEmpty(),
                 handle = prefs[HANDLE] ?: "",
                 phone = prefs[PHONE] ?: "",
@@ -74,9 +77,13 @@ object SessionManager {
         profileCompleted: Boolean? = null,
         accessToken: String? = null,
         refreshToken: String? = null,
-        profilePictureUrl: String? = null
+        profilePictureUrl: String? = null,
+        expectedSessionId: String? = null
     ) {
+        if (!accessToken.isNullOrBlank()) clearAccountState(context)
         context.sessionStore.edit { prefs ->
+            if (!SessionWriteGuard.canApply(prefs[LOGGED_IN] == true, prefs[SESSION_ID].orEmpty(), expectedSessionId)) return@edit
+            if (!accessToken.isNullOrBlank()) SessionWriteGuard.prepareLogin(prefs, java.util.UUID.randomUUID().toString())
             prefs[LOGGED_IN] = true
             if (name.isBlank() || name.trim() == "Rida Rider") prefs.remove(NAME)
             else prefs[NAME] = name.trim()
@@ -95,11 +102,13 @@ object SessionManager {
         context: Context,
         response: SessionResponse
     ) {
+        clearAccountState(context)
         val user = response.user
         val name = user.fullName?.takeIf { it.isNotBlank() } ?: user.name.orEmpty()
         val email = user.email.orEmpty()
         val phone = user.phoneNumber?.takeIf { it.isNotBlank() } ?: user.phone.orEmpty()
         context.sessionStore.edit { prefs ->
+            SessionWriteGuard.prepareLogin(prefs, java.util.UUID.randomUUID().toString())
             prefs[LOGGED_IN] = true
             if (name.isBlank()) prefs.remove(NAME) else prefs[NAME] = name.trim()
             if (email.isBlank()) {
@@ -132,8 +141,9 @@ object SessionManager {
  return applied
  }
 
-    suspend fun updateProfile(context: Context, name: String, phone: String, email: String) {
+    suspend fun updateProfile(context: Context, name: String, phone: String, email: String, expectedSessionId: String? = null) {
         context.sessionStore.edit { prefs ->
+            if (!SessionWriteGuard.canApply(prefs[LOGGED_IN] == true, prefs[SESSION_ID].orEmpty(), expectedSessionId)) return@edit
             if (name.isNotBlank()) prefs[NAME] = name.trim() else prefs.remove(NAME)
             if (phone.isNotBlank()) prefs[PHONE] = phone else prefs.remove(PHONE)
             if (email.isNotBlank()) {
@@ -144,11 +154,18 @@ object SessionManager {
         }
     }
 
-    suspend fun updateProfilePicture(context: Context, url: String, forceRefresh: Boolean = false) {
+    suspend fun updateProfilePicture(context: Context, url: String, forceRefresh: Boolean = false, expectedSessionId: String? = null) {
         context.sessionStore.edit { prefs ->
+            if (!SessionWriteGuard.canApply(prefs[LOGGED_IN] == true, prefs[SESSION_ID].orEmpty(), expectedSessionId)) return@edit
             if (prefs[PROFILE_PIC] != url || forceRefresh) prefs[PROFILE_PIC_VERSION] = System.currentTimeMillis()
             prefs[PROFILE_PIC] = url
         }
+    }
+
+    private suspend fun clearAccountState(context: Context) {
+        com.example.ridedriver.data.driver.DriverRepositoryProvider.reset()
+        context.getSharedPreferences("shared_ride_requests",Context.MODE_PRIVATE).edit().clear().commit()
+        context.stopService(android.content.Intent(context,com.example.ridedriver.data.location.DriverLocationService::class.java))
     }
 
     suspend fun clear(context:Context,expectedRefreshToken:String?=null):Boolean {
@@ -157,10 +174,7 @@ object SessionManager {
  if(expectedRefreshToken!=null && prefs[REFRESH_TOKEN]!=expectedRefreshToken)return@edit
  prefs.clear();cleared=true
  }
- if(cleared){
- context.getSharedPreferences("shared_ride_requests",Context.MODE_PRIVATE).edit().clear().commit()
- context.stopService(android.content.Intent(context,com.example.ridedriver.data.location.DriverLocationService::class.java))
- }
+ if(cleared) clearAccountState(context)
  return cleared
  }
 }
@@ -176,6 +190,12 @@ object AuthValidation {
         if (com.example.ridedriver.ui.common.TzPhone.normalize(value) == null) {
             "Enter a valid Tanzania phone number"
         } else null
+
+    fun registrationPasswordError(value: String): String? = when {
+        value.codePointCount(0, value.length) < 10 -> "Password must be at least 10 characters"
+        value.toByteArray(Charsets.UTF_8).size > 72 -> "Password must be at most 72 UTF-8 bytes"
+        else -> null
+    }
 
     fun passwordError(value: String): String? {
         if (value.isEmpty()) return "Enter your password"

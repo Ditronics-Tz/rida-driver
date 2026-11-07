@@ -11,37 +11,62 @@ import com.example.ridedriver.data.remote.RatePassengerRequest
 import com.example.ridedriver.data.remote.RidaApiClient
 import com.example.ridedriver.data.remote.UpdateDriverProfileRequest
 import com.example.ridedriver.data.remote.VehicleDto
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 
 /** Live REST implementation of [DriverRepository] that calls [DriverApi]. */
-class RemoteDriverRepository(private val api: DriverApi = RidaApiClient.driverApi) :
+class RemoteDriverRepository(
+    private val api: DriverApi = RidaApiClient.driverApi,
+    private val commandKeyOverride: (suspend (String) -> String)? = null
+) :
     DriverRepository {
 
+    private val rideLock = Mutex()
+
+    private suspend fun <T> result(block: suspend () -> T): Result<T> = try {
+        Result.success(block())
+    } catch (cancelled: CancellationException) { throw cancelled
+    } catch (error: Exception) { Result.failure(error) }
+
     private suspend fun <T> command(signature:String,call:suspend(String)->T):T {
+ commandKeyOverride?.let { return call(it(signature)) }
  val actor=RidaApiClient.api.me().user.id
  return com.example.ridedriver.ui.screens.rideCommand(RidaApiClient.requireContext(),actor,"hail/$signature",call)
  }
  private val _state = MutableStateFlow(DriverState())
     override val state: StateFlow<DriverState> = _state.asStateFlow()
 
-    override suspend fun syncRides() {
+    override suspend fun syncRides() = rideLock.withLock {
         val previous=_state.value.trip
+        val previousOffer = _state.value.offer
         val active = api.getCurrentRide()
         if (!active.isSuccessful) throw retrofit2.HttpException(active)
         val trip = active.body()?.let(::mapRideDtoToActiveTrip)
         val closed=if(trip==null&&previous!=null) api.ride(previous.id).takeIf{it.status=="completed"||it.status.startsWith("cancelled") }?.let(::mapRideDtoToTripRecord) else null
-        val offer = if (trip == null) api.getOffers().offers.firstOrNull() else null
+        currentCoroutineContext().ensureActive()
         _state.update { state ->
             state.copy(
                 trip = trip,
-                lastCompleted=closed?.takeIf{it.status==TripStatus.COMPLETED}?:state.lastCompleted,
-                history=if(closed!=null) listOf(closed)+state.history.filter{it.id!=closed.id} else state.history,
+                lastCompleted = closed?.takeIf { it.status == TripStatus.COMPLETED } ?: state.lastCompleted,
+                history = if (closed != null) listOf(closed) + state.history.filterNot { it.id == closed.id } else state.history,
+                offer = null
+            )
+        }
+        // Closing the previous trip is authoritative even if fetching the next offer fails.
+        val offer = if (trip == null) api.getOffers().offers.firstOrNull() else null
+        currentCoroutineContext().ensureActive()
+        _state.update { state ->
+            state.copy(
                 offer =
                     offer?.let { dto ->
-                        if (state.offer?.id == dto.id) state.offer
+                        if (previousOffer?.id == dto.id) previousOffer
                         else
                             RideOffer(
                                 id = dto.id,
@@ -62,7 +87,7 @@ class RemoteDriverRepository(private val api: DriverApi = RidaApiClient.driverAp
         }
     }
 
-    override suspend fun refreshProfile(): Result<DriverProfile> = runCatching {
+    override suspend fun refreshProfile(): Result<DriverProfile> = result { rideLock.withLock {
         val dto = api.getProfile()
         val me = RidaApiClient.api.me().user
         val profile =
@@ -83,6 +108,7 @@ class RemoteDriverRepository(private val api: DriverApi = RidaApiClient.driverAp
                         else -> VerificationStatus.PENDING
                     },
             )
+        currentCoroutineContext().ensureActive()
         _state.update {
             it.copy(
                 profile = profile,
@@ -95,22 +121,12 @@ class RemoteDriverRepository(private val api: DriverApi = RidaApiClient.driverAp
             )
         }
         profile
-    }
+    } }
 
     override suspend fun updateProfile(fullName: String, phone: String?): Result<DriverProfile> =
-        runCatching {
-            val dto =
-                api.updateProfile(UpdateDriverProfileRequest(fullName = fullName, phone = phone))
-            val profile =
-                _state.value.profile.copy(
-                    name = dto.fullName ?: fullName,
-                    phone = dto.phone ?: phone ?: _state.value.profile.phone,
-                )
-            _state.update { it.copy(profile = profile) }
-            profile
-        }
+        Result.failure(IllegalStateException("Personal profile editing is currently unavailable. Vehicle details are saved from Driver enrollment."))
 
-    override suspend fun updateVehicle(vehicle: Vehicle): Result<Vehicle> = runCatching {
+    override suspend fun updateVehicle(vehicle: Vehicle): Result<Vehicle> = result {
         val dto =
             api.updateVehicle(
                 VehicleDto(
@@ -131,11 +147,12 @@ class RemoteDriverRepository(private val api: DriverApi = RidaApiClient.driverAp
                 plate = dto.plateNumber.orEmpty(),
                 year = dto.year,
             )
+        currentCoroutineContext().ensureActive()
         _state.update { it.copy(vehicle = updated) }
         updated
     }
 
-    override suspend fun refreshDocuments(): Result<List<DriverDocument>> = runCatching {
+    override suspend fun refreshDocuments(): Result<List<DriverDocument>> = result {
         val resp = api.getDocuments()
         val docs =
             resp.documents.map { dto ->
@@ -148,33 +165,35 @@ class RemoteDriverRepository(private val api: DriverApi = RidaApiClient.driverAp
                     note = dto.note,
                 )
             }
+        currentCoroutineContext().ensureActive()
         _state.update { it.copy(documents = docs) }
         docs
     }
 
     override suspend fun uploadDocument(docId: String, title: String): Result<DriverDocument> =
-        runCatching {
+        result {
 error("Select a document in Driver documents to upload it.")
         }
 
-    override suspend fun setOnline(online: Boolean): Result<Unit> = runCatching {
+    override suspend fun setOnline(online: Boolean): Result<Unit> = result { rideLock.withLock {
+        currentCoroutineContext().ensureActive()
         _state.update { it.copy(goingOnline = true) }
         try {
             val loc = _state.value.location
             command("availability/$online"){key->api.setStatus(DriverStatusRequest(online = online, lat = loc?.lat, lng = loc?.lng),key)}
- if(online&&loc!=null){val r=api.updateLocation(DriverLocationRequest(lat=loc.lat,lng=loc.lng));if(!r.isSuccessful)throw retrofit2.HttpException(r)}
-            _state.update {
+
+            currentCoroutineContext().ensureActive()
+        _state.update {
                 it.copy(
                     online = online,
                     goingOnline = false,
                     onlineSinceMillis = if (online) System.currentTimeMillis() else null,
                 )
             }
-        } catch (e: Exception) {
+        } finally {
             _state.update { it.copy(goingOnline = false) }
-            throw e
         }
-    }
+    } }
 
     override suspend fun updateLocation(
         lat: Double,
@@ -182,6 +201,7 @@ error("Select a document in Driver documents to upload it.")
         bearing: Float?,
         address: String?,
     ) {
+        currentCoroutineContext().ensureActive()
         _state.update { current ->
             current.copy(location = Place(lat, lng, address ?: current.location?.address ?: ""))
         }
@@ -189,21 +209,28 @@ error("Select a document in Driver documents to upload it.")
  if(!result.isSuccessful)throw retrofit2.HttpException(result)
     }
 
-    override suspend fun acceptOffer(offerId: String): Result<ActiveTrip> = runCatching {
+    override suspend fun acceptOffer(offerId: String): Result<ActiveTrip> = result { rideLock.withLock {
         val rideDto = command("accept/$offerId"){key->api.acceptOffer(offerId,key)}
         val trip = mapRideDtoToActiveTrip(rideDto)
+        currentCoroutineContext().ensureActive()
         _state.update { it.copy(offer = null, trip = trip,online=false) }
         trip
-    }
+    } }
 
-    override suspend fun declineOffer(offerId: String): Result<Unit> = runCatching {
+    override suspend fun declineOffer(offerId: String): Result<Unit> = result { rideLock.withLock {
         val response = command("decline/$offerId"){key->api.declineOffer(offerId,key)}
         if (!response.isSuccessful) throw retrofit2.HttpException(response)
+        currentCoroutineContext().ensureActive()
         _state.update { if (it.offer?.id == offerId) it.copy(offer = null) else it }
-    }
+    } }
 
-    override suspend fun advanceTripPhase(): Result<TripPhase> = runCatching {
+    override suspend fun advanceTripPhase(): Result<TripPhase> {
+        val requestedTrip = _state.value.trip ?: return Result.failure(IllegalStateException("No active trip"))
+        return result { rideLock.withLock {
         val currentTrip = _state.value.trip ?: error("No active trip")
+        check(currentTrip.id == requestedTrip.id && currentTrip.phase == requestedTrip.phase) {
+            "Trip changed while waiting. Review its current state."
+        }
 
         val next = DriverRules.nextPhase(currentTrip.phase) ?: error("Cannot advance finished trip")
 
@@ -212,14 +239,16 @@ error("Select a document in Driver documents to upload it.")
                 val response=command("arrived/${currentTrip.id}"){key->api.markArrived(currentTrip.id,key)}
                 val updated =
                     mapRideDtoToActiveTrip(response)
-                _state.update { it.copy(trip = updated) }
+                currentCoroutineContext().ensureActive()
+        _state.update { it.copy(trip = updated) }
                 next
             }
             TripPhase.IN_TRIP -> {
                 val response=command("start/${currentTrip.id}"){key->api.startRide(currentTrip.id,key)}
                 val updated =
                     mapRideDtoToActiveTrip(response)
-                _state.update { it.copy(trip = updated) }
+                currentCoroutineContext().ensureActive()
+        _state.update { it.copy(trip = updated) }
                 next
             }
             TripPhase.COMPLETED -> {
@@ -227,28 +256,35 @@ error("Select a document in Driver documents to upload it.")
                 val done =
                     command("complete/${currentTrip.id}"){key->api.completeRide(currentTrip.id,key,CompleteRideRequest())}
                 val record = mapRideDtoToTripRecord(done)
-                _state.update {
+                currentCoroutineContext().ensureActive()
+        _state.update {
                     it.copy(
                         trip = null,
                         lastCompleted = record,
-                        history = listOf(record) + it.history,
+                        history = listOf(record) + it.history.filterNot { old -> old.id == record.id },
                     )
                 }
                 next
             }
             else -> next
         }
+        } }
     }
 
-    override suspend fun cancelActiveTrip(reason: String): Result<Unit> = runCatching {
+    override suspend fun cancelActiveTrip(reason: String): Result<Unit> = result { rideLock.withLock {
         val currentTrip = _state.value.trip ?: error("No active trip")
+        check(DriverRules.canCancel(currentTrip.phase)) { "Cannot cancel a trip already in progress" }
         val cancelled=command("cancel/${currentTrip.id}/$reason"){key->api.cancelRide(currentTrip.id,key,DriverCancelRequest(reason))}
         val record = mapRideDtoToTripRecord(cancelled)
-        _state.update { it.copy(trip = null, history = listOf(record) + it.history) }
-    }
+        currentCoroutineContext().ensureActive()
+        _state.update { it.copy(trip = null, history = listOf(record) + it.history.filterNot { old -> old.id == record.id }) }
+    } }
 
-    override suspend fun ratePassenger(tripId: String, score: Int): Result<Unit> = runCatching {
-        api.ratePassenger(tripId, RatePassengerRequest(score = score))
+    override suspend fun ratePassenger(tripId: String, score: Int): Result<Unit> = result {
+        require(score in 1..5) { "Choose a rating from 1 to 5" }
+        val response = api.ratePassenger(tripId, RatePassengerRequest(score = score))
+        if (!response.isSuccessful) throw retrofit2.HttpException(response)
+        currentCoroutineContext().ensureActive()
         _state.update { current ->
             val updated =
                 current.history.map { if (it.id == tripId) it.copy(ratingGiven = score) else it }
@@ -261,6 +297,7 @@ error("Select a document in Driver documents to upload it.")
     }
 
     override suspend fun dismissCompletedTrip() {
+        currentCoroutineContext().ensureActive()
         _state.update { it.copy(lastCompleted = null) }
     }
 
@@ -283,15 +320,16 @@ error("Select a document in Driver documents to upload it.")
         )
     }
 
-    override suspend fun refreshHistory(): Result<List<TripRecord>> = runCatching {
+    override suspend fun refreshHistory(): Result<List<TripRecord>> = result { rideLock.withLock {
         val resp = api.getRides()
         val records =
             resp.rides
                 .filter { it.status == "completed" || it.status.startsWith("cancelled") }
                 .map(::mapRideDtoToTripRecord)
+        currentCoroutineContext().ensureActive()
         _state.update { it.copy(history = records) }
         records
-    }
+    } }
 
     private fun mapRideDtoToActiveTrip(dto: DriverRideDto): ActiveTrip {
         val pickup = mapPoint(dto.pickup)

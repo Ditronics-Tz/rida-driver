@@ -22,22 +22,21 @@ import kotlinx.coroutines.flow.first
  * tracking with a persistent notification; never restarts from a background boot. */
 class DriverLocationService: Service() {
  private val scope=CoroutineScope(SupervisorJob()+Dispatchers.IO)
- private var sending=false
+ private val sending=java.util.concurrent.atomic.AtomicBoolean(false)
  private lateinit var client:FusedLocationProviderClient
  private val callback=object:LocationCallback(){
   override fun onLocationResult(result:LocationResult){
    val p=result.lastLocation?:return
    val age=SystemClock.elapsedRealtimeNanos()-p.elapsedRealtimeNanos
    if(age !in 0..120_000_000_000L||p.accuracy>100){status.value="Waiting for a fresh, accurate GPS fix";return}
-   if(sending)return
-   sending=true
+   if(!sending.compareAndSet(false,true))return
    scope.launch{
     try{
      if(!SessionManager.observe(this@DriverLocationService).first().loggedIn){stopSelf();return@launch}
      val response=RidaApiClient.driverApi.updateLocation(DriverLocationRequest(p.latitude,p.longitude,accuracy=p.accuracy))
      status.value=if(response.isSuccessful)"Sharing live driver location" else "Location update failed (HTTP ${response.code()})"
      if(response.code()==401||response.code()==403)stopSelf()
-    }catch(e:CancellationException){throw e}catch(_:Exception){status.value="Location connection interrupted; retrying"}finally{sending=false}
+    }catch(e:CancellationException){throw e}catch(_:Exception){status.value="Location connection interrupted; retrying"}finally{sending.set(false)}
    }
   }
  }
