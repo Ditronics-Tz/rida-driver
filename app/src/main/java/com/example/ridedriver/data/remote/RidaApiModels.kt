@@ -30,7 +30,8 @@ data class GoogleChallengeResponse(
 @JsonClass(generateAdapter = false)
 data class GoogleExchangeRequest(
     val idToken: String,
-    val challengeId: String
+    val challengeId: String,
+    val role: String? = null
 )
 
 @JsonClass(generateAdapter = false)

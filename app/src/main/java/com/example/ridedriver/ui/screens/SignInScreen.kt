@@ -1,63 +1,20 @@
 package com.example.ridedriver.ui.screens
 
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
-import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.credentials.exceptions.GetCredentialCancellationException
 import com.example.ridedriver.R
 import com.example.ridedriver.data.local.AuthValidation
@@ -67,14 +24,18 @@ import com.example.ridedriver.data.remote.LoginRequest
 import com.example.ridedriver.data.remote.RidaApiClient
 import com.example.ridedriver.data.remote.RidaApiErrors
 import com.example.ridedriver.data.repository.UserRepository
-import com.example.ridedriver.ui.components.RidaIcon
 import com.example.ridedriver.ui.components.RidaIcons
-import com.example.ridedriver.ui.components.RidaLogo
-import com.example.ridedriver.ui.theme.*
-import kotlinx.coroutines.launch
+import com.example.ridedriver.ui.components.auth.AuthFooterLink
+import com.example.ridedriver.ui.components.auth.AuthGoogleButton
+import com.example.ridedriver.ui.components.auth.AuthHeader
+import com.example.ridedriver.ui.components.auth.AuthMessage
+import com.example.ridedriver.ui.components.auth.AuthOrDivider
+import com.example.ridedriver.ui.components.auth.AuthPrimaryButton
+import com.example.ridedriver.ui.components.auth.AuthScreen
+import com.example.ridedriver.ui.components.auth.AuthTextField
+import com.example.ridedriver.ui.theme.RidaDriverTheme
 import kotlinx.coroutines.ensureActive
-
-private val RidaDivider = Color(0xFFE5EAE7)
+import kotlinx.coroutines.launch
 
 @Composable
 fun SignInScreen(
@@ -84,7 +45,6 @@ fun SignInScreen(
 ) {
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
-    var passwordVisible by remember { mutableStateOf(false) }
     var emailError by remember { mutableStateOf<String?>(null) }
     var pwError by remember { mutableStateOf<String?>(null) }
     var isLoading by remember { mutableStateOf(false) }
@@ -119,7 +79,9 @@ fun SignInScreen(
                 )
                 UserRepository.refreshSessionFromApi(context)
                 onSignInSuccess()
-            } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled } catch (e: Exception) {
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (e: Exception) {
                 formError = RidaApiErrors.message(e, "Sign in failed. Check your email and password.")
             } finally {
                 isLoading = false
@@ -127,250 +89,91 @@ fun SignInScreen(
         }
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.White)
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .statusBarsPadding()
-                .navigationBarsPadding()
-                .imePadding()
-                .padding(horizontal = 24.dp)
-        ) {
-            Spacer(Modifier.height(16.dp))
-
-            RidaLogo(green = RidaPrimary)
-
-            Spacer(Modifier.height(28.dp))
-
-            Text(
-                text = "Welcome back, Driver",
-                fontSize = 28.sp,
-                lineHeight = 34.sp,
-                fontWeight = FontWeight.Bold,
-                color = RidaInk,
-                letterSpacing = (-0.5).sp
-            )
-            Spacer(Modifier.height(6.dp))
-            Text(
-                text = "Sign in to go online, accept rides, and track your daily earnings in Dar es Salaam.",
-                fontSize = 14.sp,
-                lineHeight = 20.sp,
-                color = RidaSecondary
-            )
-
-            Spacer(Modifier.height(28.dp))
-
-            // Email Field
-            Text(
-                text = "Email address",
-                fontSize = 14.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = RidaInk
-            )
-            Spacer(Modifier.height(6.dp))
-            OutlinedTextField(
-                value = email,
-                onValueChange = { email = it; emailError = null },
-                modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
-                placeholder = { Text("driver@example.com", color = RidaHint, fontSize = 14.sp) },
-                leadingIcon = {
-                    RidaIcon(icon = RidaIcons.Mail, contentDescription = null, tint = RidaHint, modifier = Modifier.size(20.dp))
-                },
-                singleLine = true,
-                isError = emailError != null,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next),
-                shape = RoundedCornerShape(16.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedTextColor = RidaInk,
-                    unfocusedTextColor = RidaInk,
-                    focusedContainerColor = RidaField,
-                    unfocusedContainerColor = RidaField,
-                    focusedBorderColor = RidaPrimary,
-                    unfocusedBorderColor = RidaFieldBorder,
-                    cursorColor = RidaPrimary
-                )
-            )
-            if (emailError != null) {
-                Text(text = emailError.orEmpty(), color = Color(0xFFD92D20), fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp, start = 4.dp))
-            }
-
-            Spacer(Modifier.height(14.dp))
-
-            // Password Field
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(text = "Password", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = RidaInk)
-                Text(
-                    text = "Forgot password?",
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = RidaPrimary,
-                    modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable(onClick = onForgotPassword).padding(4.dp)
-                )
-            }
-            Spacer(Modifier.height(6.dp))
-            OutlinedTextField(
-                value = password,
-                onValueChange = { password = it; pwError = null },
-                modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
-                placeholder = { Text("Enter your password", color = RidaHint, fontSize = 14.sp) },
-                leadingIcon = {
-                    RidaIcon(icon = RidaIcons.Lock, contentDescription = null, tint = RidaHint, modifier = Modifier.size(20.dp))
-                },
-                trailingIcon = {
-                    IconButton(onClick = { passwordVisible = !passwordVisible }) {
-                        RidaIcon(
-                            icon = if (passwordVisible) RidaIcons.HidePassword else RidaIcons.ShowPassword,
-                            contentDescription = null,
-                            tint = RidaSecondary,
-                            modifier = Modifier.size(20.dp)
+    fun doGoogleSignIn() {
+        if (isLoading) return
+        isLoading = true
+        scope.launch {
+            formError = null
+            try {
+                val result = GoogleAuthManager.signIn(context)
+                if (result.isSuccess) {
+                    UserRepository.refreshSessionFromApi(context)
+                    onSignInSuccess()
+                } else {
+                    val err = result.exceptionOrNull()
+                    if (err !is GetCredentialCancellationException) {
+                        formError = RidaApiErrors.message(
+                            err ?: IllegalStateException("Google Sign-In failed"),
+                            err?.message ?: "Google Sign-In is unavailable right now. Try again or sign in with email."
                         )
                     }
-                },
-                singleLine = true,
-                visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                isError = pwError != null,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(onDone = { doSignIn() }),
-                shape = RoundedCornerShape(16.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedTextColor = RidaInk,
-                    unfocusedTextColor = RidaInk,
-                    focusedContainerColor = RidaField,
-                    unfocusedContainerColor = RidaField,
-                    focusedBorderColor = RidaPrimary,
-                    unfocusedBorderColor = RidaFieldBorder,
-                    cursorColor = RidaPrimary
-                )
-            )
-            if (pwError != null) {
-                Text(text = pwError.orEmpty(), color = Color(0xFFD92D20), fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp, start = 4.dp))
-            }
-            if (formError != null) {
-                Text(text = formError.orEmpty(), color = Color(0xFFD92D20), fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp, start = 4.dp))
-            }
-
-            Spacer(Modifier.height(24.dp))
-
-            // Primary Sign-in Button
-            val interaction = remember { MutableInteractionSource() }
-            val pressed by interaction.collectIsPressedAsState()
-            val buttonScale by animateFloatAsState(
-                targetValue = if (pressed) 0.985f else 1f,
-                animationSpec = spring(stiffness = 700f),
-                label = "btn_scale"
-            )
-            val shape = RoundedCornerShape(18.dp)
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp)
-                    .scale(buttonScale)
-                    .shadow(7.dp, shape, ambientColor = RidaPrimary.copy(alpha = 0.15f), spotColor = RidaPrimary.copy(alpha = 0.25f))
-                    .clip(shape)
-                    .background(Brush.horizontalGradient(listOf(RidaForest, RidaActionEnd)))
-                    .clickable(
-                        enabled = !isLoading,
-                        role = Role.Button,
-                        interactionSource = interaction,
-                        indication = null,
-                        onClick = ::doSignIn
-                    ),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                if (isLoading) {
-                    CircularProgressIndicator(modifier = Modifier.size(20.dp), color = Color.White, strokeWidth = 2.dp)
-                    Spacer(Modifier.width(10.dp))
                 }
-                Text("Sign In as Driver", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
-                Spacer(Modifier.width(8.dp))
-                RidaIcon(icon = RidaIcons.Forward, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
-            }
-
-            Spacer(Modifier.height(16.dp))
-
-            // Divider
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                HorizontalDivider(modifier = Modifier.weight(1f), color = RidaDivider)
-                Text(
-                    text = "OR",
-                    modifier = Modifier.padding(horizontal = 12.dp),
-                    fontSize = 12.sp,
-                    color = RidaSecondary,
-                    fontWeight = FontWeight.Medium
-                )
-                HorizontalDivider(modifier = Modifier.weight(1f), color = RidaDivider)
-            }
-
-            Spacer(Modifier.height(16.dp))
-
-            // Google Sign-In Button
-            OutlinedButton(
-                onClick = {
-                    if (isLoading) return@OutlinedButton
-                    isLoading = true
-                    scope.launch {
-                        formError = null
-                        try {
-                            val result = GoogleAuthManager.signIn(context)
-                            if (result.isSuccess) {
-                                UserRepository.refreshSessionFromApi(context)
-                                onSignInSuccess()
-                            } else {
-                                val err = result.exceptionOrNull()
-                                if (err !is GetCredentialCancellationException) {
-                                    formError = RidaApiErrors.message(
-                                        err ?: IllegalStateException("Google Sign-In failed"),
-                                        err?.message ?: "Google Sign-In is unavailable right now. Try again or sign in with email."
-                                    )
-                                }
-                            }
-                        } finally {
-                            isLoading = false
-                        }
-                    }
-                },
-                enabled = !isLoading,
-                modifier = Modifier.fillMaxWidth().height(56.dp),
-                shape = RoundedCornerShape(16.dp),
-                colors = ButtonDefaults.outlinedButtonColors(containerColor = Color.White, contentColor = RidaInk),
-                border = androidx.compose.foundation.BorderStroke(1.dp, RidaFieldBorder)
-            ) {
-                Image(painter = painterResource(R.drawable.google_g), contentDescription = null, modifier = Modifier.size(20.dp))
-                Spacer(Modifier.width(10.dp))
-                Text("Continue with Google", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-            }
-
-            Spacer(Modifier.weight(1f))
-
-            // Sign Up link
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(bottom = 20.dp),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(text = "Want to drive with Rida? ", fontSize = 14.sp, color = RidaSecondary)
-                Text(
-                    text = "Register Now",
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = RidaPrimary,
-                    modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable(onClick = onSignUp).padding(4.dp)
-                )
+            } finally {
+                isLoading = false
             }
         }
     }
+
+    AuthScreen(
+        header = {
+            AuthHeader(
+                title = "Welcome back, Driver",
+                subtitle = "Sign in to go online, accept rides, and track your daily earnings in Dar es Salaam."
+            )
+        },
+        footer = {
+            AuthFooterLink(
+                prompt = "Want to drive with Rida? ",
+                action = "Register Now",
+                onClick = onSignUp
+            )
+        },
+        body = {
+            AuthTextField(
+                label = "Email address",
+                value = email,
+                onValueChange = { email = it; emailError = null },
+                placeholder = "driver@example.com",
+                icon = RidaIcons.Mail,
+                error = emailError,
+                keyboardType = KeyboardType.Email,
+                imeAction = ImeAction.Next
+            )
+            Spacer(Modifier.height(14.dp))
+            AuthTextField(
+                label = "Password",
+                value = password,
+                onValueChange = { password = it; pwError = null },
+                placeholder = "Enter your password",
+                icon = RidaIcons.Lock,
+                error = pwError,
+                labelAction = "Forgot password?",
+                onLabelAction = onForgotPassword,
+                isPassword = true,
+                keyboardType = KeyboardType.Password,
+                imeAction = ImeAction.Done,
+                onImeAction = ::doSignIn
+            )
+            if (formError != null) {
+                AuthMessage(formError.orEmpty(), modifier = Modifier.padding(top = 8.dp, start = 4.dp))
+            }
+            Spacer(Modifier.height(24.dp))
+            AuthPrimaryButton(
+                text = "Sign In as Driver",
+                onClick = ::doSignIn,
+                loading = isLoading
+            )
+            Spacer(Modifier.height(16.dp))
+            AuthOrDivider()
+            Spacer(Modifier.height(16.dp))
+            AuthGoogleButton(
+                text = "Continue with Google",
+                icon = R.drawable.google_g,
+                enabled = !isLoading,
+                onClick = ::doGoogleSignIn
+            )
+        }
+    )
 }
 
 @Preview(showBackground = true)
@@ -384,4 +187,3 @@ private fun SignInScreenPreview() {
         )
     }
 }
-

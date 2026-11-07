@@ -22,7 +22,11 @@ object GoogleAuthManager {
 
     const val WEB_CLIENT_ID = "173520268894-nhrolv9c3818n8o3r252i9sjudviq3rm.apps.googleusercontent.com"
 
-    suspend fun signIn(context: Context): Result<SessionResponse> {
+    suspend fun signIn(context: Context): Result<SessionResponse> = authenticate(context)
+
+    suspend fun register(context: Context): Result<SessionResponse> = authenticate(context)
+
+    private suspend fun authenticate(context: Context): Result<SessionResponse> {
         return try {
             // A fresh server challenge is mandatory: its nonce is checked against the
             // signed Google ID token during the backend exchange.
@@ -38,7 +42,7 @@ object GoogleAuthManager {
                 .addCredentialOption(googleOption)
                 .build()
             val activity = context.findActivity()
-                ?: return Result.failure(IllegalStateException("Open the sign-in screen, then try Google again."))
+                ?: return Result.failure(IllegalStateException("Open this screen, then try Google again."))
             val response = CredentialManager.create(activity).getCredential(
                 request = request,
                 context = activity
@@ -64,8 +68,7 @@ object GoogleAuthManager {
                     challengeId = challenge.challengeId
                 )
             )
-            // POST /auth/google creates a passenger unless this Google subject is already a driver.
-            GoogleSignInPolicy.rejection(session.user.role, session.getEffectiveAccessToken())?.let { reason ->
+            GoogleSignInPolicy.rejection(session.getEffectiveAccessToken())?.let { reason ->
                 return Result.failure(IllegalStateException(reason))
             }
 
@@ -95,11 +98,10 @@ private tailrec fun Context.findActivity(): Activity? = when (this) {
     else -> null
 }
 
-/** Matches POST /auth/google: a new Google account is a passenger, and only a driver session may enter this app. */
+/** Accepts the session returned by POST /auth/google, including a passenger account. */
 object GoogleSignInPolicy {
-    fun rejection(role: String?, accessToken: String): String? {
+    fun rejection(accessToken: String): String? {
         if (accessToken.isBlank()) return "Rida did not return an access token"
-        if (role == "driver") return null
-        return "This Google account is a passenger account. Register as a driver with email, or sign in with your driver email and password."
+        return null
     }
 }
