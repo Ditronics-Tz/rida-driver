@@ -22,11 +22,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
@@ -35,7 +33,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -58,6 +55,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.credentials.exceptions.GetCredentialCancellationException
@@ -140,32 +138,11 @@ fun SignInScreen(
                 .statusBarsPadding()
                 .navigationBarsPadding()
                 .imePadding()
-                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 24.dp)
         ) {
             Spacer(Modifier.height(16.dp))
 
-            // Brand Header with Driver Badge
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                RidaLogo(green = RidaPrimary)
-                Surface(
-                    shape = RoundedCornerShape(20.dp),
-                    color = RidaPrimary.copy(alpha = 0.12f)
-                ) {
-                    Text(
-                        text = "DRIVER",
-                        color = RidaActionEnd,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 1.sp,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                    )
-                }
-            }
+            RidaLogo(green = RidaPrimary)
 
             Spacer(Modifier.height(28.dp))
 
@@ -375,7 +352,7 @@ fun SignInScreen(
                 Text("Continue with Google", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
             }
 
-            Spacer(Modifier.height(28.dp))
+            Spacer(Modifier.weight(1f))
 
             // Sign Up link
             Row(
@@ -395,3 +372,16 @@ fun SignInScreen(
         }
     }
 }
+
+@Preview(showBackground = true)
+@Composable
+private fun SignInScreenPreview() {
+    RidaDriverTheme {
+        SignInScreen(
+            onSignInSuccess = {},
+            onForgotPassword = {},
+            onSignUp = {}
+        )
+    }
+}
+

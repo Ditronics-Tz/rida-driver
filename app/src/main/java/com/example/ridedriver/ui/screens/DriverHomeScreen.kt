@@ -61,6 +61,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ridedriver.data.driver.ActiveTrip
@@ -947,3 +948,46 @@ private fun TripCompletionDialog(
         }
     )
 }
+
+// ---------------------------------------------------------------------------
+// Previews
+// ---------------------------------------------------------------------------
+
+@Preview(showBackground = true)
+@Composable
+private fun DriverHomeScreenPreview() {
+    RidaDriverTheme {
+        DriverHomeScreen(
+            onNavigateToEarnings = {},
+            onNavigateToProfile = {}
+        )
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+private fun TopBarOverlayPreview() {
+    RidaDriverTheme {
+        TopBarOverlay(
+            driverName = "Juma Bakari",
+            rating = 4.92,
+            tripsCount = 148,
+            todayGrossTzs = 45000,
+            onEarningsClick = {},
+            onProfileClick = {}
+        )
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+private fun OnlineTogglePillPreview() {
+    RidaDriverTheme {
+        Column(modifier = Modifier.padding(16.dp)) {
+            OnlineTogglePill(online = true, goingOnline = false, onToggle = {})
+            Spacer(Modifier.height(16.dp))
+            OnlineTogglePill(online = false, goingOnline = false, onToggle = {})
+        }
+    }
+}
+

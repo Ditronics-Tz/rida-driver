@@ -1,12 +1,20 @@
 package com.example.ridedriver.ui.navigation
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.ScaffoldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import com.example.ridedriver.data.local.SessionManager
 import androidx.compose.runtime.getValue
@@ -55,6 +63,12 @@ fun DriverNavGraph(
         DriverRoutes.PROFILE
     )
 
+    val visibleRoute = currentRoute ?: startDestination
+    val isAuthRoute = visibleRoute in setOf(
+        DriverRoutes.SIGN_IN,
+        DriverRoutes.SIGN_UP,
+        DriverRoutes.FORGOT_PASSWORD
+    )
     val showBottomBar = currentRoute in mainTabs
 
     val currentTab = when (currentRoute) {
@@ -66,6 +80,13 @@ fun DriverNavGraph(
     }
 
     Scaffold(
+        // Auth backgrounds reach the screen edges. Each auth screen insets its own controls.
+        containerColor = if (isAuthRoute) Color.White else MaterialTheme.colorScheme.background,
+        contentWindowInsets = if (isAuthRoute) {
+            WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)
+        } else {
+            ScaffoldDefaults.contentWindowInsets
+        },
         bottomBar = {
             if (showBottomBar) {
                 DriverBottomBar(
@@ -112,6 +133,7 @@ fun DriverNavGraph(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
+                .then(if (isAuthRoute) Modifier.consumeWindowInsets(innerPadding) else Modifier)
         ) {
             NavHost(
                 navController = navController,

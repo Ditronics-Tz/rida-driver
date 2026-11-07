@@ -45,6 +45,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ridedriver.data.driver.DocumentStatus
@@ -581,3 +582,33 @@ private fun DocStatusBadge(status: DocumentStatus) {
         )
     }
 }
+
+@Preview(showBackground = true)
+@Composable
+private fun DriverProfileScreenPreview() {
+    RidaDriverTheme {
+        DriverProfileScreen(
+            onNavigateToVehicle = {},
+            onNavigateToDocuments = {},
+            onNavigateToSettings = {},
+            onNavigateToSupport = {}
+        )
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+private fun VehicleEditScreenPreview() {
+    RidaDriverTheme {
+        VehicleEditScreen(onBack = {})
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+private fun DocumentsScreenPreview() {
+    RidaDriverTheme {
+        DocumentsScreen(onBack = {})
+    }
+}
+

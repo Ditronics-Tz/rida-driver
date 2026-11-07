@@ -34,6 +34,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ridedriver.data.driver.DriverRepositoryProvider
@@ -48,6 +49,7 @@ import com.example.ridedriver.ui.components.UserAvatar
 import com.example.ridedriver.ui.map.RidaMapView
 import com.example.ridedriver.ui.theme.RidaActionEnd
 import com.example.ridedriver.ui.theme.RidaBorder
+import com.example.ridedriver.ui.theme.RidaDriverTheme
 import com.example.ridedriver.ui.theme.RidaForest
 import com.example.ridedriver.ui.theme.RidaInk
 import com.example.ridedriver.ui.theme.RidaPrimary
@@ -399,3 +401,20 @@ fun TripDetailScreen(
         }
     }
 }
+
+@Preview(showBackground = true)
+@Composable
+private fun TripsHistoryScreenPreview() {
+    RidaDriverTheme {
+        TripsHistoryScreen(onTripClick = {})
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+private fun TripDetailScreenPreview() {
+    RidaDriverTheme {
+        TripDetailScreen(tripId = "trip_101", onBack = {})
+    }
+}
+

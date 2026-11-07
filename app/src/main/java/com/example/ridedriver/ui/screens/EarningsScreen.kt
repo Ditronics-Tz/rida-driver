@@ -33,6 +33,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ridedriver.data.driver.DayEarning
@@ -43,6 +44,7 @@ import com.example.ridedriver.data.driver.TripRecord
 import com.example.ridedriver.ui.common.TzMoney
 import com.example.ridedriver.ui.components.RidaIcon
 import com.example.ridedriver.ui.components.RidaIcons
+import com.example.ridedriver.ui.theme.RidaDriverTheme
 import com.example.ridedriver.ui.theme.RidaActionEnd
 import com.example.ridedriver.ui.theme.RidaBorder
 import com.example.ridedriver.ui.theme.RidaForest
@@ -314,3 +316,12 @@ private fun EarningsTripItem(
         }
     }
 }
+
+@Preview(showBackground = true)
+@Composable
+private fun EarningsScreenPreview() {
+    RidaDriverTheme {
+        EarningsScreen()
+    }
+}
+

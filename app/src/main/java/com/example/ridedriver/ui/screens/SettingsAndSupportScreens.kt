@@ -43,6 +43,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ridedriver.data.driver.DriverRepositoryProvider
@@ -53,6 +54,7 @@ import com.example.ridedriver.ui.components.RidaIcon
 import com.example.ridedriver.ui.components.RidaIcons
 import com.example.ridedriver.ui.theme.RidaActionEnd
 import com.example.ridedriver.ui.theme.RidaBorder
+import com.example.ridedriver.ui.theme.RidaDriverTheme
 import com.example.ridedriver.ui.theme.RidaField
 import com.example.ridedriver.ui.theme.RidaFieldBorder
 import com.example.ridedriver.ui.theme.RidaForest
@@ -406,3 +408,24 @@ fun SupportScreen(
         Spacer(Modifier.height(28.dp))
     }
 }
+
+@Preview(showBackground = true)
+@Composable
+private fun SettingsScreenPreview() {
+    RidaDriverTheme {
+        SettingsScreen(
+            onBack = {},
+            onNavigateToSupport = {},
+            onLogout = {}
+        )
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+private fun SupportScreenPreview() {
+    RidaDriverTheme {
+        SupportScreen(onBack = {})
+    }
+}
+
