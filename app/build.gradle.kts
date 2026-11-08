@@ -1,7 +1,9 @@
 import java.net.URI
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     alias(libs.plugins.android.application)
+    alias(libs.plugins.google.services)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
 }
@@ -47,8 +49,11 @@ android {
         compose = true
         buildConfig = true
     }
-    kotlinOptions {
-        jvmTarget = "17"
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(JvmTarget.JVM_17)
     }
 }
 
@@ -84,6 +89,10 @@ dependencies {
     implementation(libs.accompanist.permissions)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.datastore.preferences)
+
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.analytics)
+    implementation(libs.firebase.messaging)
 
     // Credential Manager & Google Sign-In
     implementation(libs.credentials.core)

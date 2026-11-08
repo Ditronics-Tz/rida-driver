@@ -12,6 +12,13 @@ import retrofit2.http.Query
  */
 interface RidaApi {
 
+    @POST("driver/push-devices")
+    suspend fun registerPushDevice(
+        @Header("Authorization") authorization: String,
+        @Body body: Map<String, String>
+    ): Response<Unit>
+
+
     // ---------------------------------------------------------------------------
     // Public Health & Auth
     // ---------------------------------------------------------------------------
